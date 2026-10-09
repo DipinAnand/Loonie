@@ -1,9 +1,11 @@
 import { type AccountBase, type Transaction, TransactionsUpdateStatus } from "plaid";
-import { type ItemRow, type ItemStatus, itemsForUser, markItemScanned, setItemStatus } from "./db.js";
+import { type ItemRow, type ItemStatus, itemsForUser, markItemScanned, scansForUser, setItemStatus } from "./db.js";
+import { localToday, notifyUser } from "./engagement/service.js";
+import { detectSuspicious } from "./engine/anomaly.js";
 import { buildLeakReceipt } from "./engine/receipt.js";
 import type { Txn } from "./engine/types.js";
 import { openAccessToken } from "./keys.js";
-import { applyScan, ensureUser, type ScanSummary } from "./ledger.js";
+import { applyScan, ensureUser, readReceipt, type ScanSummary } from "./ledger.js";
 import { log } from "./log.js";
 import { plaid, plaidError } from "./plaid.js";
 
@@ -141,9 +143,28 @@ export function runScan(userId: string, opts: { waitForData?: boolean } = {}): P
     if (data.length === 0) return null; // nothing readable: keep the ledger as it was
 
     const txns = data.flatMap((d) => d.txns);
-    const receipt = buildLeakReceipt(txns);
-    const summary = await applyScan(user, receipt, txns, { today: new Date().toISOString().slice(0, 10), complete });
+    const today = localToday(user);
+    const receipt = buildLeakReceipt(txns, { asOf: today });
+
+    // Suspicious charges: "zombie" check needs the subscriptions the user said they don't need.
+    const ledger = await readReceipt(user);
+    const cancelled = new Map(
+      [...ledger.leaks, ...ledger.resolved]
+        .filter((l) => l.kind === "subscription" && l.verdict === "confirmed" && l.verdictAt)
+        .map((l) => [l.merchantKey, l.verdictAt!.slice(0, 10)]),
+    );
+    const firstScan = scansForUser(userId, 1).length === 0;
+    receipt.leaks.push(
+      ...detectSuspicious(txns, { asOf: today, lookbackDays: firstScan ? 7 : 14, cancelledMerchants: cancelled }).map((l) => ({
+        ...l,
+        verdict: null,
+      })),
+    );
+
+    const summary = await applyScan(user, receipt, txns, { today, complete });
     for (const id of scannedItemIds) markItemScanned(id);
+    // Alerts come from the updated ledger; a push failure never fails the scan.
+    await notifyUser((await ensureUser(userId))).catch((err) => log.warn("notify after scan failed", { err }));
     return summary;
   })().finally(() => running.delete(userId));
 

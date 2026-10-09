@@ -53,9 +53,9 @@ export function buildLeakReceipt(
   };
 }
 
-/** Yearly total, skipping dismissed leaks. */
+/** Yearly total, skipping dismissed leaks. Suspicious charges are alerts, not leaks, so they never count. */
 export function totalImpact(leaks: Pick<Leak & { verdict: Verdict | null }, "kind" | "merchantKey" | "annualImpact" | "verdict">[]): number {
-  const counted = leaks.filter((l) => l.verdict !== "dismissed");
+  const counted = leaks.filter((l) => l.verdict !== "dismissed" && l.kind !== "suspicious");
   // A price hike is already inside its subscription's annual cost; only count it on its own once the user keeps the subscription.
   const liveSubs = new Set(counted.filter((l) => l.kind === "subscription").map((l) => l.merchantKey));
   return round2(
@@ -109,6 +109,7 @@ function subscriptionLeaks(recurring: RecurringSeries[]): Leak[] {
         medianAmount: s.medianAmount,
         category: s.categoryPrimary,
       },
+      meta: { cadence: s.cadence, lastAmount: s.lastAmount, nextExpectedDate: s.nextExpectedDate },
     }));
 }
 

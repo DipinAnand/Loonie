@@ -25,7 +25,15 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-font",
+      "expo-localization",
+      [
+        "expo-notifications",
+        {
+          "color": "#6C5CE7"
+        }
+      ]
     ],
     "scheme": "looni",
     "experiments": {

@@ -29,6 +29,8 @@ export const config = {
   oldMasterKeys: list(process.env.OLD_MASTER_KEYS, ""),
   /** Rescan every user on a timer as a fallback for missed webhooks. 0 = off. */
   scanIntervalHours: Number(process.env.SCAN_INTERVAL_HOURS || 0),
+  /** How often to check the ledger for alerts that need no new bank data (renewals, weekly hunt). 0 = off. */
+  notifyIntervalMinutes: Number(process.env.NOTIFY_INTERVAL_MINUTES ?? 60),
   /** Bump when the consent text changes; stored with every training row. */
   consentVersion: "2026-10",
 };

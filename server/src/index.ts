@@ -4,9 +4,41 @@ import { rateLimit } from "express-rate-limit";
 import helmet from "helmet";
 import { Products } from "plaid";
 import { assertConfig, config } from "./config.js";
-import { allUserIds, deleteUserRow, getItem, insertItem, itemsForUser, setConsent, type UserRow } from "./db.js";
+import {
+  allUserIds,
+  deletePushToken,
+  deleteUserRow,
+  getItem,
+  getUser,
+  insertItem,
+  itemsForUser,
+  markAlertsRead,
+  markBadgesSeen,
+  setConsent,
+  setNotifySettings,
+  setTimezone,
+  upsertPushToken,
+  completeQuest,
+  completedQuests,
+  type UserRow,
+} from "./db.js";
+import { NOT_ME_STEPS } from "./engine/anomaly.js";
+import { currentHunt } from "./engagement/hunt.js";
+import { hashToken, parseSettings } from "./engagement/notify.js";
+import { isSelfReported } from "./engagement/quests.js";
+import {
+  alertInbox,
+  badgesFor,
+  homeFor,
+  localToday,
+  monthlyReport,
+  notifyUser,
+  questsFor,
+  shareStatsFor,
+  syncBadges,
+} from "./engagement/service.js";
 import { leakyScenarioSandboxConfig } from "./engine/scenario.js";
-import { forgetDek, openAccessToken, sealAccessToken } from "./keys.js";
+import { forgetDek, openAccessToken, sealAccessToken, sealForUser } from "./keys.js";
 import { ensureUser, labelLeak, readReceipt, sealInstitution } from "./ledger.js";
 import { log } from "./log.js";
 import { plaid, plaidError } from "./plaid.js";
@@ -196,18 +228,149 @@ app.get("/api/transactions", async (req, res) => {
   });
 });
 
-/** Confirm / dismiss a leak. Training rows only with consent, de-identified. */
+/**
+ * Confirm / dismiss a leak. For suspicious charges, "confirmed" means "Not me"
+ * and the response carries the steps to take. Training rows only with consent.
+ */
 app.post("/api/labels", async (req, res) => {
+  const user = userOf(req);
   const { leakId, verdict } = req.body ?? {};
   if (verdict !== "confirmed" && verdict !== "dismissed") {
     res.status(400).json({ error: "verdict must be 'confirmed' or 'dismissed'" });
     return;
   }
-  if (!(await labelLeak(userOf(req), String(leakId), verdict))) {
+  if (!(await labelLeak(user, String(leakId), verdict))) {
     res.status(404).json({ error: "Unknown leak" });
     return;
   }
+  const today = localToday(user);
+  const receipt = await readReceipt(user);
+  const hunt = await currentHunt(user, today);
+  const { newlyCompleted } = await questsFor(user, receipt, today, hunt.streak);
+  const badges = syncBadges(user, receipt, today, hunt.streak);
+  const suspicious = receipt.suspicious.find((l) => l.id === leakId);
+  res.json({
+    ok: true,
+    notMeSteps: suspicious && verdict === "confirmed" ? NOT_ME_STEPS : undefined,
+    hunt: { remaining: hunt.remaining, completed: hunt.completed, streak: hunt.streak },
+    celebrate: { quests: newlyCompleted, badges },
+  });
+});
+
+// ---- engagement ---------------------------------------------------------------
+
+app.get("/api/home", async (req, res) => {
+  res.json(await homeFor(userOf(req)));
+});
+
+app.get("/api/hunt", async (req, res) => {
+  const user = userOf(req);
+  res.json(await currentHunt(user, localToday(user)));
+});
+
+app.get("/api/quests", async (req, res) => {
+  const user = userOf(req);
+  const today = localToday(user);
+  const hunt = await currentHunt(user, today);
+  const { quests, newlyCompleted, questLoonies } = await questsFor(user, await readReceipt(user), today, hunt.streak);
+  res.json({ quests, newlyCompleted, questLoonies });
+});
+
+/** Self-reported quests only ("I got the fee refunded"); auto quests complete from the ledger. */
+app.post("/api/quests/:id/complete", async (req, res) => {
+  const user = userOf(req);
+  const id = String(req.params.id);
+  const today = localToday(user);
+  const hunt = await currentHunt(user, today);
+  const { quests } = await questsFor(user, await readReceipt(user), today, hunt.streak);
+  if (!isSelfReported(id) || !quests.some((q) => q.id === id) || completedQuests(user.id).has(id)) {
+    res.status(400).json({ error: "This quest can't be completed manually right now" });
+    return;
+  }
+  completeQuest(user.id, id, today);
   res.json({ ok: true });
+});
+
+app.get("/api/badges", async (req, res) => {
+  res.json({ badges: await badgesFor(userOf(req)) });
+});
+
+app.post("/api/badges/seen", (req, res) => {
+  markBadgesSeen(userOf(req).id);
+  res.json({ ok: true });
+});
+
+app.get("/api/alerts", async (req, res) => {
+  res.json({ alerts: await alertInbox(userOf(req)) });
+});
+
+app.post("/api/alerts/read", (req, res) => {
+  const keys = req.body?.keys;
+  markAlertsRead(userOf(req).id, Array.isArray(keys) ? keys.map(String).slice(0, 200) : "all", new Date().toISOString().replace("T", " ").slice(0, 19));
+  res.json({ ok: true });
+});
+
+const PUSH_TOKEN = /^Expo(nent)?PushToken\[[A-Za-z0-9_-]{10,}\]$/;
+
+app.post("/api/push-token", async (req, res) => {
+  const user = userOf(req);
+  const token = String(req.body?.token ?? "");
+  if (!PUSH_TOKEN.test(token)) {
+    res.status(400).json({ error: "Invalid Expo push token" });
+    return;
+  }
+  upsertPushToken(user.id, hashToken(token), await sealForUser(user.id, user.wrapped_dek, token, "push"));
+  res.json({ ok: true });
+});
+
+app.delete("/api/push-token", (req, res) => {
+  deletePushToken(userOf(req).id, hashToken(String(req.body?.token ?? "")));
+  res.json({ ok: true });
+});
+
+app.get("/api/settings/notifications", (req, res) => {
+  const user = userOf(req);
+  res.json({ ...parseSettings(user.notify_settings), timezone: user.timezone });
+});
+
+app.put("/api/settings/notifications", (req, res) => {
+  const user = userOf(req);
+  const body = req.body ?? {};
+  if (typeof body.timezone === "string") {
+    try {
+      new Intl.DateTimeFormat("en-CA", { timeZone: body.timezone });
+      setTimezone(user.id, body.timezone);
+    } catch {
+      res.status(400).json({ error: "Unknown time zone" });
+      return;
+    }
+  }
+  const current = parseSettings(user.notify_settings);
+  const hour = (v: unknown, d: number) => (Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 23 ? (v as number) : d);
+  const next = {
+    push: typeof body.push === "boolean" ? body.push : current.push,
+    hideAmounts: typeof body.hideAmounts === "boolean" ? body.hideAmounts : current.hideAmounts,
+    quietStart: hour(body.quietStart, current.quietStart),
+    quietEnd: hour(body.quietEnd, current.quietEnd),
+    kinds: Object.fromEntries(
+      Object.entries(current.kinds).map(([k, v]) => [k, typeof body.kinds?.[k] === "boolean" ? body.kinds[k] : v]),
+    ),
+  };
+  setNotifySettings(user.id, JSON.stringify(next));
+  res.json({ ...next, timezone: getUser(user.id)!.timezone });
+});
+
+app.get("/api/share", async (req, res) => {
+  res.json(await shareStatsFor(userOf(req)));
+});
+
+app.get("/api/report", async (req, res) => {
+  const month = String(req.query.month ?? "");
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    res.status(400).json({ error: "month must be YYYY-MM" });
+    return;
+  }
+  res.json(await monthlyReport(userOf(req), month));
 });
 
 /**
@@ -238,6 +401,19 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   log.error("unhandled", err);
   res.status(500).json({ error: "Internal error" });
 });
+
+// Ledger-only alert check (renewals, weekly hunt, monthly report): no Plaid calls.
+if (config.notifyIntervalMinutes > 0) {
+  setInterval(
+    async () => {
+      for (const id of allUserIds()) {
+        const user = getUser(id);
+        if (user) await notifyUser(user).catch((err) => log.warn("scheduled notify failed", { err }));
+      }
+    },
+    config.notifyIntervalMinutes * 60_000,
+  ).unref();
+}
 
 // Fallback for missed webhooks: rescan everyone on a timer.
 if (config.scanIntervalHours > 0) {

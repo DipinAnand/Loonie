@@ -37,7 +37,17 @@ export interface RecurringSeries {
   txnIds: string[];
 }
 
-export type LeakKind = "fee" | "subscription" | "price_hike" | "duplicate";
+export type LeakKind = "fee" | "subscription" | "price_hike" | "duplicate" | "suspicious";
+
+/** Display/scheduling data that is not a model feature (kept out of training rows). */
+export interface LeakMeta {
+  cadence?: Cadence;
+  lastAmount?: number;
+  nextExpectedDate?: string;
+  /** For suspicious charges: which rule fired. */
+  rule?: string;
+  date?: string;
+}
 
 export interface Leak {
   /** Stable across re-runs so user labels stick to the same leak. */
@@ -51,6 +61,7 @@ export interface Leak {
   txnIds: string[];
   /** Feature snapshot stored alongside labels -> future training rows. */
   features: Record<string, string | number | boolean | null>;
+  meta?: LeakMeta;
 }
 
 export type Verdict = "confirmed" | "dismissed";

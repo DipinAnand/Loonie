@@ -8,6 +8,7 @@ const KIND: Record<LeakKind, { icon: string; label: string; confirm: string; dis
   subscription: { icon: "repeat", label: "Recurring", confirm: "Don't need it", dismiss: "Keep it" },
   price_hike: { icon: "trending-up", label: "Price hike", confirm: "Didn't know", dismiss: "I knew" },
   duplicate: { icon: "content-duplicate", label: "Double charge", confirm: "Yes, duplicate", dismiss: "Not a duplicate" },
+  suspicious: { icon: "shield-alert-outline", label: "Suspicious", confirm: "Not me", dismiss: "This was me" },
 };
 
 export function LeakCard({ leak, onVerdict }: { leak: Leak; onVerdict: (v: Verdict) => void }) {

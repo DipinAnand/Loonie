@@ -18,8 +18,9 @@ import {
 } from "./db.js";
 import { totalImpact } from "./engine/receipt.js";
 import { toTrainingFeatures } from "./engine/training.js";
-import type { Leak, LeakKind, LeakReceipt, Txn, Verdict } from "./engine/types.js";
+import type { Leak, LeakKind, LeakMeta, LeakReceipt, Txn, Verdict } from "./engine/types.js";
 import { round2 } from "./engine/util.js";
+import { leakScore } from "./engagement/score.js";
 import { newWrappedDek, openForUser, sealForUser } from "./keys.js";
 
 /** Everything about a finding that identifies money or merchants. Sealed with the user's key. */
@@ -29,6 +30,7 @@ export interface LeakPayload {
   merchantKey: string;
   annualImpact: number;
   features: Leak["features"];
+  meta?: LeakMeta;
   /** Dates and amounts of only this leak's charges, so it can be tracked after Plaid's window moves on. */
   history: { date: string; amount: number }[];
 }
@@ -40,6 +42,8 @@ export interface ScanSummary {
   resolved: number;
   transactionCount: number;
   windowStart: string | null;
+  /** Leak Score right after this scan (for the trend line). */
+  score?: number;
 }
 
 const HISTORY_LIMIT = 24;
@@ -89,6 +93,7 @@ export async function applyScan(
       merchantKey: leak.merchantKey,
       annualImpact: leak.annualImpact,
       features: leak.features,
+      meta: leak.meta,
       history,
     };
     if (!prev) added++;
@@ -122,6 +127,8 @@ export async function applyScan(
     transactionCount: receipt.transactionCount,
     windowStart: receipt.windowStart,
   };
+  const after = await readReceipt(user);
+  summary.score = leakScore(after.leaks, after.resolved, after.suspicious, opts.today).score;
   insertScan(user.id, opts.complete, await seal(user, summary, "scan"));
   return summary;
 }
@@ -135,10 +142,12 @@ export interface LedgerLeak {
   lastSeen: string;
   resolvedAt: string | null;
   verdict: Verdict | null;
+  verdictAt: string | null;
   title: string;
   detail: string;
   merchantKey: string;
   annualImpact: number;
+  meta: LeakMeta;
   history: { date: string; amount: number }[];
 }
 
@@ -151,6 +160,8 @@ export interface LedgerReceipt {
   transactionCount: number;
   windowStart: string | null;
   leaks: LedgerLeak[];
+  /** Open suspicious-charge alerts (not counted in totals). */
+  suspicious: LedgerLeak[];
   resolved: LedgerLeak[];
   connections: { itemId: string; institution: string | null; status: ItemStatus; lastScannedAt: string | null }[];
 }
@@ -174,17 +185,20 @@ export async function readReceipt(user: UserRow): Promise<LedgerReceipt> {
       lastSeen: r.last_seen,
       resolvedAt: r.resolved_at,
       verdict: r.verdict,
+      verdictAt: r.verdict_at,
       title: p.title,
       detail: p.detail,
       merchantKey: p.merchantKey,
       annualImpact: p.annualImpact,
+      meta: p.meta ?? {},
       history: p.history,
     });
   }
 
-  const open = all.filter((l) => l.status === "open").sort((a, b) => b.annualImpact - a.annualImpact);
-  const resolved = all.filter((l) => l.status === "resolved").sort((a, b) => (b.resolvedAt ?? "").localeCompare(a.resolvedAt ?? ""));
-  const saved = resolved.filter((l) => l.verdict === "confirmed" && l.kind !== "duplicate").reduce((s, l) => s + l.annualImpact, 0);
+  const open = all.filter((l) => l.status === "open" && l.kind !== "suspicious").sort((a, b) => b.annualImpact - a.annualImpact);
+  const suspicious = all.filter((l) => l.status === "open" && l.kind === "suspicious").sort((a, b) => b.firstSeen.localeCompare(a.firstSeen));
+  const resolved = all.filter((l) => l.status === "resolved" && l.kind !== "suspicious").sort((a, b) => (b.resolvedAt ?? "").localeCompare(a.resolvedAt ?? ""));
+  const saved = resolved.filter((l) => l.verdict === "confirmed" && l.kind !== "duplicate" && l.kind !== "suspicious").reduce((s, l) => s + l.annualImpact, 0);
 
   const connections = [];
   for (const i of itemsForUser(user.id)) {
@@ -204,6 +218,7 @@ export async function readReceipt(user: UserRow): Promise<LedgerReceipt> {
     transactionCount: summary?.transactionCount ?? 0,
     windowStart: summary?.windowStart ?? null,
     leaks: open,
+    suspicious,
     resolved,
     connections,
   };

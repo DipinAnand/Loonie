@@ -8,13 +8,19 @@ import type { LeakKind, Verdict } from "./engine/types.js";
  */
 export const db = new DatabaseSync(config.databasePath);
 
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 db.exec("PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON; PRAGMA secure_delete = ON;");
 
 // v1 (first MVP) stored raw transactions and balances. Drop them rather than migrate.
 if ((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version < SCHEMA_VERSION) {
   db.exec(`
+    DROP TABLE IF EXISTS hunts;
+    DROP TABLE IF EXISTS quest_progress;
+    DROP TABLE IF EXISTS achievements;
+    DROP TABLE IF EXISTS push_tokens;
+    DROP TABLE IF EXISTS alerts;
+    DROP TABLE IF EXISTS notification_log;
     DROP TABLE IF EXISTS transactions;
     DROP TABLE IF EXISTS accounts;
     DROP TABLE IF EXISTS labels;
@@ -32,6 +38,8 @@ db.exec(`
     subject_enc      TEXT NOT NULL,              -- training-data pseudonym, sealed with the user's key
     consent_training INTEGER NOT NULL DEFAULT 0,
     consent_version  TEXT,
+    timezone         TEXT NOT NULL DEFAULT 'America/Toronto',
+    notify_settings  TEXT NOT NULL DEFAULT '{}',   -- preferences only, no financial data
     created_at       TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
@@ -70,6 +78,52 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS scans_user ON scans(user_id, ran_at);
 
+  -- Weekly Leak Hunt: the cards chosen for a week, and when the user finished them.
+  CREATE TABLE IF NOT EXISTS hunts (
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    week         TEXT NOT NULL,                  -- ISO week, e.g. 2026-W41
+    leak_ids     TEXT NOT NULL,                  -- JSON array of leak ids (opaque hashes)
+    completed_at TEXT,
+    PRIMARY KEY (user_id, week)
+  );
+
+  CREATE TABLE IF NOT EXISTS quest_progress (
+    user_id      TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    quest_id     TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, quest_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS achievements (
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    badge       TEXT NOT NULL,
+    unlocked_at TEXT NOT NULL,
+    seen        INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, badge)
+  );
+
+  CREATE TABLE IF NOT EXISTS push_tokens (
+    user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token_hash TEXT NOT NULL,                    -- dedupe without storing the token in clear
+    token_enc  TEXT NOT NULL,                    -- sealed with the user's key
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (user_id, token_hash)
+  );
+
+  -- In-app alert inbox. Every alert lands here; only some are also pushed.
+  CREATE TABLE IF NOT EXISTS alerts (
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    alert_key   TEXT NOT NULL,                   -- idempotency key, e.g. renew:<leakId>:<date>
+    kind        TEXT NOT NULL,
+    security    INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    pushed_at   TEXT,
+    read_at     TEXT,
+    payload_enc TEXT NOT NULL,                   -- title/body/leak id, sealed with the user's key
+    PRIMARY KEY (user_id, alert_key)
+  );
+  CREATE INDEX IF NOT EXISTS alerts_user_time ON alerts(user_id, created_at);
+
   -- De-identified, consented training rows. Deliberately no user_id and no
   -- foreign key: the only link back is subject_enc, destroyed with the user.
   CREATE TABLE IF NOT EXISTS training_labels (
@@ -92,6 +146,8 @@ export interface UserRow {
   subject_enc: string;
   consent_training: number;
   consent_version: string | null;
+  timezone: string;
+  notify_settings: string;
 }
 
 export function getUser(id: string): UserRow | undefined {
@@ -109,6 +165,14 @@ export function setConsent(id: string, training: boolean, version: string): void
 /** Cascades to items, leaks and scans. The wrapped DEK goes with the row. */
 export function deleteUserRow(id: string): void {
   db.prepare("DELETE FROM users WHERE id = ?").run(id);
+}
+
+export function setTimezone(id: string, tz: string): void {
+  db.prepare("UPDATE users SET timezone = ? WHERE id = ?").run(tz, id);
+}
+
+export function setNotifySettings(id: string, json: string): void {
+  db.prepare("UPDATE users SET notify_settings = ? WHERE id = ?").run(json, id);
 }
 
 export function allUserIds(): string[] {
@@ -231,4 +295,125 @@ export function insertTrainingLabel(r: {
   db.prepare(
     "INSERT INTO training_labels (subject_id, consent_version, leak_kind, verdict, features) VALUES (?, ?, ?, ?, ?)",
   ).run(r.subjectId, r.consentVersion, r.leakKind, r.verdict, JSON.stringify(r.features));
+}
+
+// ---- engagement --------------------------------------------------------------
+
+export interface HuntRow {
+  user_id: string;
+  week: string;
+  leak_ids: string;
+  completed_at: string | null;
+}
+
+export function getHunt(userId: string, week: string): HuntRow | undefined {
+  return db.prepare("SELECT * FROM hunts WHERE user_id = ? AND week = ?").get(userId, week) as HuntRow | undefined;
+}
+
+export function insertHunt(userId: string, week: string, leakIds: string[], completedAt: string | null): void {
+  db.prepare("INSERT OR IGNORE INTO hunts (user_id, week, leak_ids, completed_at) VALUES (?, ?, ?, ?)").run(
+    userId,
+    week,
+    JSON.stringify(leakIds),
+    completedAt,
+  );
+}
+
+export function completeHunt(userId: string, week: string, at: string): void {
+  db.prepare("UPDATE hunts SET completed_at = ? WHERE user_id = ? AND week = ? AND completed_at IS NULL").run(at, userId, week);
+}
+
+export function completedHuntWeeks(userId: string): string[] {
+  return (db.prepare("SELECT week FROM hunts WHERE user_id = ? AND completed_at IS NOT NULL").all(userId) as { week: string }[]).map(
+    (r) => r.week,
+  );
+}
+
+export function completedQuests(userId: string): Map<string, string> {
+  const rows = db.prepare("SELECT quest_id, completed_at FROM quest_progress WHERE user_id = ?").all(userId) as {
+    quest_id: string;
+    completed_at: string;
+  }[];
+  return new Map(rows.map((r) => [r.quest_id, r.completed_at]));
+}
+
+export function completeQuest(userId: string, questId: string, at: string): boolean {
+  return db.prepare("INSERT OR IGNORE INTO quest_progress (user_id, quest_id, completed_at) VALUES (?, ?, ?)").run(userId, questId, at)
+    .changes > 0;
+}
+
+export function unlockedBadges(userId: string): { badge: string; unlocked_at: string; seen: number }[] {
+  return db.prepare("SELECT badge, unlocked_at, seen FROM achievements WHERE user_id = ?").all(userId) as {
+    badge: string;
+    unlocked_at: string;
+    seen: number;
+  }[];
+}
+
+export function unlockBadge(userId: string, badge: string, at: string): boolean {
+  return db.prepare("INSERT OR IGNORE INTO achievements (user_id, badge, unlocked_at) VALUES (?, ?, ?)").run(userId, badge, at).changes > 0;
+}
+
+export function markBadgesSeen(userId: string): void {
+  db.prepare("UPDATE achievements SET seen = 1 WHERE user_id = ?").run(userId);
+}
+
+export function upsertPushToken(userId: string, tokenHash: string, tokenEnc: string): void {
+  db.prepare("INSERT OR REPLACE INTO push_tokens (user_id, token_hash, token_enc) VALUES (?, ?, ?)").run(userId, tokenHash, tokenEnc);
+}
+
+export function pushTokensFor(userId: string): { token_hash: string; token_enc: string }[] {
+  return db.prepare("SELECT token_hash, token_enc FROM push_tokens WHERE user_id = ?").all(userId) as {
+    token_hash: string;
+    token_enc: string;
+  }[];
+}
+
+export function deletePushToken(userId: string, tokenHash: string): void {
+  db.prepare("DELETE FROM push_tokens WHERE user_id = ? AND token_hash = ?").run(userId, tokenHash);
+}
+
+export interface AlertRow {
+  user_id: string;
+  alert_key: string;
+  kind: string;
+  security: number;
+  created_at: string;
+  pushed_at: string | null;
+  read_at: string | null;
+  payload_enc: string;
+}
+
+/** Returns false if this alert already exists (idempotent). */
+export function insertAlert(r: { userId: string; key: string; kind: string; security: boolean; payloadEnc: string; at: string }): boolean {
+  return (
+    db
+      .prepare("INSERT OR IGNORE INTO alerts (user_id, alert_key, kind, security, created_at, payload_enc) VALUES (?, ?, ?, ?, ?, ?)")
+      .run(r.userId, r.key, r.kind, r.security ? 1 : 0, r.at, r.payloadEnc).changes > 0
+  );
+}
+
+export function markAlertPushed(userId: string, key: string, at: string): void {
+  db.prepare("UPDATE alerts SET pushed_at = ? WHERE user_id = ? AND alert_key = ?").run(at, userId, key);
+}
+
+export function countPushedSince(userId: string, since: string, security: boolean): number {
+  return (
+    db
+      .prepare("SELECT COUNT(*) AS n FROM alerts WHERE user_id = ? AND pushed_at >= ? AND security = ?")
+      .get(userId, since, security ? 1 : 0) as { n: number }
+  ).n;
+}
+
+export function alertsFor(userId: string, limit = 50): AlertRow[] {
+  return db.prepare("SELECT * FROM alerts WHERE user_id = ? ORDER BY created_at DESC LIMIT ?").all(userId, limit) as unknown as AlertRow[];
+}
+
+export function markAlertsRead(userId: string, keys: string[] | "all", at: string): void {
+  if (keys === "all") {
+    db.prepare("UPDATE alerts SET read_at = ? WHERE user_id = ? AND read_at IS NULL").run(at, userId);
+    return;
+  }
+  const stmt = db.prepare("UPDATE alerts SET read_at = ? WHERE user_id = ? AND alert_key = ? AND read_at IS NULL");
+  for (const k of keys) stmt.run(at, userId, k);
 }

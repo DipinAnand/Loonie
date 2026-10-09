@@ -18,7 +18,10 @@ and savings history, and the app asks them to reconnect.
 | Institution name | Yes | `items.institution_enc`: user's own key | User disconnects |
 | Leak findings (title, merchant, amounts, that leak's own charge dates) | Yes | `leaks.payload_enc`: user's own key | User disconnects (crypto-shredded) |
 | Leak status, kind, first/last seen, verdict | Yes, plaintext | `leaks` | User disconnects |
-| Scan summaries (total, counts) | Yes | `scans.summary_enc`: user's own key | User disconnects |
+| Scan summaries (total, counts, Leak Score) | Yes | `scans.summary_enc`: user's own key | User disconnects |
+| Alert inbox (title, body, leak id) | Yes | `alerts.payload_enc`: user's own key | User disconnects |
+| Push tokens | Yes | `push_tokens.token_enc`: user's own key, plus a SHA-256 hash for de-duplication | User disconnects, or the push service reports the device gone |
+| Hunts, quests, badges, notification preferences, time zone | Yes, plaintext | Contains no amounts or merchants (hunts store opaque leak ids only) | User disconnects |
 | Training examples | Only with opt-in consent | `training_labels`: merchant key, cadence, *amount ranges*, kind, verdict, consent version. Keyed by a random `subject_id`, **no user id** | Kept: it can't be linked to anyone once the user is deleted |
 | Logs | Minimal | Tokens masked; names, descriptions, amounts, balances and accounts are dropped (`server/src/log.ts`) | Log retention policy |
 
@@ -62,6 +65,13 @@ Master key (AWS KMS, ca-central-1, in production; MASTER_KEY in dev)
 - **`SCAN_INTERVAL_HOURS`** is a timer fallback for missed webhooks.
 - **A leak is marked resolved only after a scan in which every connection succeeded.** If one bank is down, a missing
   subscription is treated as missing data, not as a cancellation.
+
+## Notifications
+
+- Lock-screen text **hides amounts by default** (`hideAmounts`). The full text is only in the in-app inbox.
+- No more than 2 non-security pushes per 7 days. Nothing is pushed during quiet hours (21:00–08:00 local), except
+  suspicious-charge alerts.
+- Push payloads carry only an alert key and leak id; the app fetches details over the authenticated API.
 
 ## Other controls
 

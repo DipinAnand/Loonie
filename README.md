@@ -108,6 +108,37 @@ cancelling Netflix" and trend charts.
 (no user id), the consent version, the merchant key, cadence, amount ranges, kind and verdict. These rows train the
 Phase 2 recurring and leak classifiers.
 
+## Engagement (`server/src/engagement`)
+
+Everything is computed from the encrypted ledger. No transactions needed.
+
+- **Leak Score** (0–100) with a breakdown that says how to win each point back.
+- **Savings:** saved per year and saved to date (pro-rated since each leak stopped). **Loonies** (1 per $1 saved
+  plus quest rewards) grow the loon from egg to chick to fledgling to loon.
+- **Outcome streaks:** fee-free days, months without an NSF. They break only when money leaks, never for not opening
+  the app.
+- **Weekly Leak Hunt:** 3 swipe cards a week. A hunt streak with one forgiven miss per month.
+- **Quests and badges,** including a seasonal Fall Cleanup.
+- **Suspicious-charge alerts** (`server/src/engine/anomaly.ts`): card testing, a large first charge from a new merchant,
+  foreign currency from a new merchant, and a "zombie" subscription that keeps charging after you said you don't need
+  it. "Not me" returns the steps to take.
+- **Alerts and push:**
+  - Kinds: renewals (0–2 days ahead), new fees, price hikes, new leaks, suspicious charges, Monday hunt, monthly
+    report.
+  - Each alert is created once and goes to the inbox.
+  - At most 2 non-security pushes per 7 days. Quiet hours in the user's time zone.
+  - Security alerts always push.
+  - **Amounts are hidden on the lock screen by default.**
+
+Push needs a development build and an EAS project id (`npx eas-cli@latest init` in `mobile/`). Android also needs FCM
+credentials uploaded to EAS.
+
+## Design
+
+The custom UI is being designed in Google Stitch. See **[design/STITCH_BRIEF.md](design/STITCH_BRIEF.md)** for the
+brand brief, the style preamble and the 14 screen prompts. Mocks go in `design/mocks/`. `mobile/src/ui/tokens.ts`
+holds the design tokens (placeholders until the mocks land).
+
 ## API
 
 | Method | Path | |
@@ -123,6 +154,15 @@ Phase 2 recurring and leak classifiers.
 | POST | `/api/labels` | `{ leakId, verdict: "confirmed" \| "dismissed" }` |
 | DELETE | `/api/me` | Removes the Plaid items and deletes the user. Their key is destroyed |
 | POST | `/webhooks/plaid` | Plaid webhooks (signature verified): rescans and connection status |
+| GET | `/api/home` | Leak Score (+ how to raise it), saved per year / to date, loonies, level, streaks, upcoming renewals, hunt state, celebrations |
+| GET | `/api/hunt` | This week's Leak Hunt (3 cards) and the hunt streak |
+| GET | `/api/quests` · POST `/api/quests/:id/complete` | Quests; auto ones complete from the ledger, self-reported ones via POST |
+| GET | `/api/badges` · POST `/api/badges/seen` | Achievements |
+| GET | `/api/alerts` · POST `/api/alerts/read` | The alert inbox (every alert, pushed or not) |
+| POST/DELETE | `/api/push-token` | Register an Expo push token (sealed with the user's key) |
+| GET/PUT | `/api/settings/notifications` | Push on/off, hide amounts (default on), quiet hours, alert kinds, time zone |
+| GET | `/api/share` | Privacy-safe numbers for the share card |
+| GET | `/api/report?month=YYYY-MM` | Monthly Leak Report |
 
 All `/api` calls need an `x-looni-user` header: an anonymous UUID the app keeps in SecureStore. **Replace it with real
 auth before production.**

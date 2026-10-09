@@ -1,7 +1,22 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { getUserId } from "./user";
-import type { Account, LeakReceipt, QuickLinkResult, Txn, Verdict } from "./types";
+import type {
+  Account,
+  Alert,
+  Badge,
+  Home,
+  Hunt,
+  LabelResult,
+  LeakReceipt,
+  MonthlyReport,
+  NotificationSettings,
+  Quest,
+  QuickLinkResult,
+  ShareStats,
+  Txn,
+  Verdict,
+} from "./types";
 
 /**
  * EXPO_PUBLIC_API_URL wins. Otherwise reuse the LAN host Metro is served from,
@@ -56,6 +71,20 @@ export const api = {
   transactions: (limit = 100) =>
     request<{ accounts: Account[]; transactions: Txn[]; complete: boolean }>(`/api/transactions?limit=${limit}`),
   receipt: () => request<LeakReceipt>("/api/receipt"),
-  label: (leakId: string, verdict: Verdict) => post("/api/labels", { leakId, verdict }),
+  label: (leakId: string, verdict: Verdict) => post<LabelResult>("/api/labels", { leakId, verdict }),
+  home: () => request<Home>("/api/home"),
+  hunt: () => request<Hunt>("/api/hunt"),
+  quests: () => request<{ quests: Quest[]; newlyCompleted: string[]; questLoonies: number }>("/api/quests"),
+  completeQuest: (id: string) => post<{ ok: true }>(`/api/quests/${encodeURIComponent(id)}/complete`),
+  badges: () => request<{ badges: Badge[] }>("/api/badges"),
+  markBadgesSeen: () => post("/api/badges/seen"),
+  alerts: () => request<{ alerts: Alert[] }>("/api/alerts"),
+  markAlertsRead: (keys?: string[]) => post("/api/alerts/read", { keys }),
+  registerPushToken: (token: string) => post("/api/push-token", { token }),
+  notificationSettings: () => request<NotificationSettings>("/api/settings/notifications"),
+  updateNotificationSettings: (patch: Partial<NotificationSettings>) =>
+    request<NotificationSettings>("/api/settings/notifications", { method: "PUT", body: JSON.stringify(patch) }),
+  share: () => request<ShareStats>("/api/share"),
+  report: (month: string) => request<MonthlyReport>(`/api/report?month=${month}`),
   deleteMe: () => request("/api/me", { method: "DELETE" }),
 };

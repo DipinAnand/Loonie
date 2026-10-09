@@ -6,6 +6,7 @@ import { LeakCard } from "../components/LeakCard";
 import { api } from "../lib/api";
 import { money } from "../lib/format";
 import { openPlaidLink } from "../lib/plaidLink";
+import { enablePush } from "../lib/push";
 import type { Connection, LeakReceipt, Verdict } from "../lib/types";
 import { resetUserId } from "../lib/user";
 
@@ -28,6 +29,12 @@ export default function Receipt() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Ask for notifications only after the user has seen their leaks (never at first launch).
+  const leakCount = receipt?.leaks.length ?? 0;
+  useEffect(() => {
+    if (leakCount > 0) enablePush().catch(() => {});
+  }, [leakCount]);
 
   // Pull to refresh = a fresh scan: the server re-reads Plaid, updates the ledger, keeps no transactions.
   async function rescan() {
@@ -53,9 +60,15 @@ export default function Receipt() {
 
   async function label(leakId: string, verdict: Verdict) {
     // Optimistic: flip the card now, then pull the recomputed total.
-    setReceipt((r) => r && { ...r, leaks: r.leaks.map((l) => (l.id === leakId ? { ...l, verdict } : l)) });
+    const flip = (ls: LeakReceipt["leaks"]) => ls.map((l) => (l.id === leakId ? { ...l, verdict } : l));
+    setReceipt((r) => r && { ...r, leaks: flip(r.leaks), suspicious: flip(r.suspicious) });
     try {
-      await api.label(leakId, verdict);
+      const result = await api.label(leakId, verdict);
+      if (result.notMeSteps) {
+        const text = result.notMeSteps.map((step, i) => `${i + 1}. ${step}`).join("\n\n");
+        if (Platform.OS === "web") globalThis.alert?.(text);
+        else Alert.alert("Here's what to do", text);
+      }
       await load();
     } catch (e) {
       setError((e as Error).message);
@@ -125,6 +138,12 @@ export default function Receipt() {
                 } Your findings below are safe.`}
               </Banner>
             ))}
+
+            {receipt.suspicious
+              .filter((l) => l.verdict === null)
+              .map((l) => (
+                <LeakCard key={l.id} leak={l} onVerdict={(v) => label(l.id, v)} />
+              ))}
 
             <Card mode="contained" style={{ backgroundColor: theme.colors.secondaryContainer }}>
               <Card.Content style={{ gap: 4 }}>
