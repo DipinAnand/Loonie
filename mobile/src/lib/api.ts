@@ -49,9 +49,12 @@ export const api = {
   exchangePublicToken: (publicToken: string, institution?: { id?: string; name?: string }) =>
     post<{ itemId: string }>("/api/link/exchange", { publicToken, institution }),
   sandboxQuickLink: (scenario: "leaky" | "dynamic") => post<QuickLinkResult>("/api/sandbox/quick-link", { scenario }),
-  sync: () => post("/api/transactions/sync"),
-  accounts: () => request<{ accounts: Account[] }>("/api/accounts"),
-  transactions: (limit = 100) => request<{ transactions: Txn[] }>(`/api/transactions?limit=${limit}`),
+  createUpdateLinkToken: (itemId: string) => post<{ linkToken: string }>("/api/link/update-token", { itemId, platform: Platform.OS }),
+  consent: (training: boolean) => post<{ ok: boolean }>("/api/consent", { training }),
+  scan: () => post<{ receipt: LeakReceipt }>("/api/scan"),
+  /** Fetched live from Plaid by the server; not stored anywhere. */
+  transactions: (limit = 100) =>
+    request<{ accounts: Account[]; transactions: Txn[]; complete: boolean }>(`/api/transactions?limit=${limit}`),
   receipt: () => request<LeakReceipt>("/api/receipt"),
   label: (leakId: string, verdict: Verdict) => post("/api/labels", { leakId, verdict }),
   deleteMe: () => request("/api/me", { method: "DELETE" }),

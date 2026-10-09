@@ -19,9 +19,16 @@ export function LeakCard({ leak, onVerdict }: { leak: Leak; onVerdict: (v: Verdi
     <Card mode="elevated" style={[styles.card, dismissed && { opacity: 0.55 }]}>
       <Card.Content style={{ gap: 6 }}>
         <View style={styles.row}>
-          <Chip icon={k.icon} compact>
-            {k.label}
-          </Chip>
+          <View style={styles.chips}>
+            <Chip icon={k.icon} compact>
+              {k.label}
+            </Chip>
+            {leak.isNew && (
+              <Chip compact style={{ backgroundColor: theme.colors.primaryContainer }} textStyle={{ color: theme.colors.onPrimaryContainer }}>
+                New
+              </Chip>
+            )}
+          </View>
           <Text variant="titleMedium" style={{ color: dismissed ? theme.colors.onSurfaceVariant : theme.colors.error, fontWeight: "700" }}>
             {money(leak.annualImpact)}
             <Text variant="bodySmall">{leak.kind === "duplicate" ? "" : "/yr"}</Text>
@@ -47,4 +54,5 @@ export function LeakCard({ leak, onVerdict }: { leak: Leak; onVerdict: (v: Verdi
 const styles = StyleSheet.create({
   card: { marginBottom: 12 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  chips: { flexDirection: "row", gap: 6 },
 });

@@ -20,6 +20,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="consent" options={{ title: "Your data, your call" }} />
           <Stack.Screen name="connect" options={{ title: "Connect your bank" }} />
           <Stack.Screen name="receipt" options={{ title: "Your Leak Receipt", headerBackVisible: false }} />
           <Stack.Screen name="transactions" options={{ title: "Accounts & transactions" }} />

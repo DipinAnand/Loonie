@@ -2,25 +2,42 @@
 export type Verdict = "confirmed" | "dismissed";
 export type LeakKind = "fee" | "subscription" | "price_hike" | "duplicate";
 
+export type ConnectionStatus = "healthy" | "login_required" | "revoked";
+
+/** A finding from the server's encrypted leak ledger (mirrors server/src/ledger.ts). */
 export interface Leak {
   id: string;
   kind: LeakKind;
+  status: "open" | "resolved";
+  isNew: boolean;
+  firstSeen: string;
+  lastSeen: string;
+  resolvedAt: string | null;
+  verdict: Verdict | null;
   title: string;
   detail: string;
   merchantKey: string;
   annualImpact: number;
-  txnIds: string[];
-  verdict: Verdict | null;
+  history: { date: string; amount: number }[];
+}
+
+export interface Connection {
+  itemId: string;
+  institution: string | null;
+  status: ConnectionStatus;
+  lastScannedAt: string | null;
 }
 
 export interface LeakReceipt {
-  generatedAt: string;
-  windowStart: string | null;
-  windowEnd: string | null;
-  windowDays: number;
-  transactionCount: number;
+  lastScanAt: string | null;
+  lastScanComplete: boolean;
   totalAnnualImpact: number;
+  savedPerYear: number;
+  transactionCount: number;
+  windowStart: string | null;
   leaks: Leak[];
+  resolved: Leak[];
+  connections: Connection[];
 }
 
 export interface Account {
@@ -32,7 +49,6 @@ export interface Account {
   current_balance: number | null;
   available_balance: number | null;
   currency: string | null;
-  institution_name: string | null;
 }
 
 export interface Txn {

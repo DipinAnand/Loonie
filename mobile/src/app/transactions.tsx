@@ -7,12 +7,13 @@ import type { Account, Txn } from "../lib/types";
 
 export default function Transactions() {
   const theme = useTheme();
-  const [data, setData] = useState<{ accounts: Account[]; transactions: Txn[] } | null>(null);
+  const [data, setData] = useState<{ accounts: Account[]; transactions: Txn[]; complete: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([api.accounts(), api.transactions(200)])
-      .then(([a, t]) => setData({ accounts: a.accounts, transactions: t.transactions }))
+    api
+      .transactions(200)
+      .then((r) => setData(r))
       .catch((e: Error) => setError(e.message));
   }, []);
 
@@ -27,11 +28,15 @@ export default function Transactions() {
       contentContainerStyle={{ paddingBottom: 32 }}
       ListHeaderComponent={
         <View style={styles.accounts}>
+          <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, marginBottom: 12 }}>
+            Live from your bank through Plaid. Looni doesn't store transactions or balances.
+            {data.complete ? "" : " Some accounts couldn't be reached."}
+          </Text>
           {data.accounts.map((a) => (
             <Card key={a.account_id} mode="outlined" style={{ marginBottom: 8 }}>
               <Card.Title
                 title={`${a.name}${a.mask ? ` ••${a.mask}` : ""}`}
-                subtitle={[a.institution_name, a.subtype].filter(Boolean).join(" · ")}
+                subtitle={[a.type, a.subtype].filter(Boolean).join(" · ")}
                 right={() => (
                   <Text variant="titleMedium" style={{ marginRight: 16 }}>
                     {a.current_balance == null ? "—" : money(a.current_balance, a.currency ?? "CAD")}

@@ -20,22 +20,34 @@ export const config = {
     // Android OAuth redirect needs the app package name; iOS OAuth needs a registered https redirect.
     androidPackageName: process.env.PLAID_ANDROID_PACKAGE_NAME || "",
     redirectUri: process.env.PLAID_REDIRECT_URI || "",
+    // Public HTTPS URL of POST /webhooks/plaid (e.g. an ngrok tunnel in dev). Optional.
+    webhookUrl: process.env.PLAID_WEBHOOK_URL || "",
   },
-  encryptionKey: process.env.ENCRYPTION_KEY || "",
+  keyProvider: (process.env.KEY_PROVIDER || "local") as "local" | "kms",
+  masterKey: process.env.MASTER_KEY || "",
+  masterKeyId: process.env.MASTER_KEY_ID || "k1",
+  oldMasterKeys: list(process.env.OLD_MASTER_KEYS, ""),
+  /** Rescan every user on a timer as a fallback for missed webhooks. 0 = off. */
+  scanIntervalHours: Number(process.env.SCAN_INTERVAL_HOURS || 0),
+  /** Bump when the consent text changes; stored with every training row. */
+  consentVersion: "2026-10",
 };
 
 export function assertConfig(): void {
   const missing = [
     ["PLAID_CLIENT_ID", config.plaid.clientId],
     ["PLAID_SECRET", config.plaid.secret],
-    ["ENCRYPTION_KEY", config.encryptionKey],
+    ...(config.keyProvider === "local" ? [["MASTER_KEY", config.masterKey]] : []),
   ]
     .filter(([, v]) => !v)
     .map(([k]) => k);
   if (missing.length) {
     throw new Error(`Missing env: ${missing.join(", ")}. Copy server/.env.example to server/.env and fill it in.`);
   }
-  if (Buffer.from(config.encryptionKey, "base64").length !== 32) {
-    throw new Error("ENCRYPTION_KEY must be 32 bytes, base64 encoded.");
+  if (config.keyProvider === "local" && Buffer.from(config.masterKey, "base64").length !== 32) {
+    throw new Error("MASTER_KEY must be 32 bytes, base64 encoded.");
+  }
+  if (config.masterKeyId.includes(".") || config.masterKeyId.includes(":")) {
+    throw new Error("MASTER_KEY_ID may not contain '.' or ':'.");
   }
 }

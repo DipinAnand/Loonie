@@ -8,7 +8,7 @@ import { api } from "../lib/api";
 const POINTS = [
   { emoji: "🧾", title: "A Leak Receipt in under a minute", body: "Junk fees, forgotten subscriptions, silent price hikes and double charges, totalled for the year." },
   { emoji: "🏦", title: "Every bank, one view", body: "Connect your Big-6 bank, credit union or neobank through Plaid. Read-only, always." },
-  { emoji: "🔒", title: "Your data stays yours", body: "Encrypted at rest, never sold, and deleted when you disconnect." },
+  { emoji: "🔒", title: "Your data stays yours", body: "We analyze your transactions and keep only the findings. Encrypted, never sold, deleted when you leave." },
 ];
 
 export default function Welcome() {
@@ -18,9 +18,9 @@ export default function Welcome() {
   // Returning users go straight to their receipt.
   useEffect(() => {
     api
-      .accounts()
-      .then(({ accounts }) => {
-        if (accounts.length) router.replace("/receipt");
+      .receipt()
+      .then(({ connections }) => {
+        if (connections.length) router.replace("/receipt");
         else setChecking(false);
       })
       .catch(() => setChecking(false));
@@ -65,7 +65,7 @@ export default function Welcome() {
         </View>
       </ScrollView>
       <View style={styles.footer}>
-        <Button mode="contained" contentStyle={styles.cta} onPress={() => router.push("/connect")}>
+        <Button mode="contained" contentStyle={styles.cta} onPress={() => router.push("/consent")}>
           Scan my accounts
         </Button>
       </View>

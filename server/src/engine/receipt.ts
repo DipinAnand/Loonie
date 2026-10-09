@@ -40,12 +40,6 @@ export function buildLeakReceipt(
 
   const verdicts = opts.verdicts ?? new Map();
   const withVerdicts = leaks.map((l) => ({ ...l, verdict: verdicts.get(l.id) ?? null }));
-  const counted = withVerdicts.filter((l) => l.verdict !== "dismissed");
-  // A price hike is already inside its subscription's annual cost; only count it on its own once the user keeps the subscription.
-  const liveSubs = new Set(counted.filter((l) => l.kind === "subscription").map((l) => l.merchantKey));
-  const total = counted
-    .filter((l) => !(l.kind === "price_hike" && liveSubs.has(l.merchantKey)))
-    .reduce((s, l) => s + l.annualImpact, 0);
 
   return {
     generatedAt: new Date().toISOString(),
@@ -53,10 +47,20 @@ export function buildLeakReceipt(
     windowEnd,
     windowDays,
     transactionCount: settled.length,
-    totalAnnualImpact: round2(total),
+    totalAnnualImpact: totalImpact(withVerdicts),
     leaks: withVerdicts,
     recurring,
   };
+}
+
+/** Yearly total, skipping dismissed leaks. */
+export function totalImpact(leaks: Pick<Leak & { verdict: Verdict | null }, "kind" | "merchantKey" | "annualImpact" | "verdict">[]): number {
+  const counted = leaks.filter((l) => l.verdict !== "dismissed");
+  // A price hike is already inside its subscription's annual cost; only count it on its own once the user keeps the subscription.
+  const liveSubs = new Set(counted.filter((l) => l.kind === "subscription").map((l) => l.merchantKey));
+  return round2(
+    counted.filter((l) => !(l.kind === "price_hike" && liveSubs.has(l.merchantKey))).reduce((s, l) => s + l.annualImpact, 0),
+  );
 }
 
 function feeLeaks(txns: Txn[], asOf: string, windowDays: number): Leak[] {
