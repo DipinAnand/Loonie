@@ -13,7 +13,8 @@
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "demo:receipt": "tsx src/engine/demo.ts"
+    "demo:receipt": "tsx src/engine/demo.ts",
+    "smoke": "tsx --env-file-if-exists=.env scripts/smoke.ts"
   },
   "dependencies": {
     "cors": "^2.8.6",

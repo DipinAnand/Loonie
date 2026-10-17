@@ -9,6 +9,8 @@ export interface ScenarioTxn {
 /**
  * A deterministic "leaky" Canadian chequing account: subscriptions (one with a
  * price hike), bilingual bank fees, an NSF, a double charge and ordinary noise.
+ * Also a subscription renewing tomorrow and a $1 card-testing charge, so a
+ * demo shows renewal reminders and suspicious-charge alerts.
  * Used by the unit tests and fed to Plaid Sandbox as a `user_custom` account so
  * the full pipeline (Plaid -> sync -> engine) can be exercised end to end.
  */
@@ -29,6 +31,8 @@ export function leakyScenario(asOf: string, months = 6): ScenarioTxn[] {
   monthly(1, () => ({ date: "", amount: 16.95, description: "FRAIS MENSUELS / MONTHLY FEE" }));
   monthly(20, (m) => (m % 2 === 0 ? { date: "", amount: 1.5, description: "INTERAC E-TRANSFER FEE" } : null));
   monthly(25, () => ({ date: "", amount: 1850, description: "RENT PAYMENT PROPERTY MGMT" }));
+  // Renews tomorrow: shows the renewal reminder and the "Coming up" row.
+  monthly(29, () => ({ date: "", amount: 22.99, description: "CRAVE" }));
 
   // Payroll every two weeks (inflow -> ignored by leak rules).
   for (let d = 2; d < months * 30; d += 14) out.push({ date: addDays(asOf, -d), amount: -2150, description: "PAYROLL DEPOSIT ACME CORP" });
@@ -41,6 +45,8 @@ export function leakyScenario(asOf: string, months = 6): ScenarioTxn[] {
   out.push({ date: addDays(asOf, -22), amount: 3.5, description: "FOREIGN TRANSACTION FEE" });
   out.push({ date: addDays(asOf, -10), amount: 89.99, description: "SQ *BEST BUY ONLINE 4421" });
   out.push({ date: addDays(asOf, -9), amount: 89.99, description: "SQ *BEST BUY ONLINE 4421" });
+  // Card-testing pattern: $1 from a merchant never seen before → suspicious-charge alert.
+  out.push({ date: addDays(asOf, -2), amount: 1.0, description: "QWKMART ONLINE 88123" });
 
   return out.sort((a, b) => a.date.localeCompare(b.date));
 }

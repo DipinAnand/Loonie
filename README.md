@@ -44,8 +44,9 @@ npm install
 cp .env.example .env          # paste PLAID_CLIENT_ID + PLAID_SECRET
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"   # → MASTER_KEY in .env
 npm run dev                   # http://localhost:4000
-npm test                      # rules-engine + security tests
+npm test                      # engine, security and engagement tests
 npm run demo:receipt          # prints a Leak Receipt for the built-in test account, no Plaid needed
+npm run smoke                 # with the server running: checks the whole demo path against Plaid Sandbox
 ```
 
 Try the whole pipeline with curl (any UUID works as the user id in the MVP):
@@ -72,7 +73,7 @@ the **Plaid Sandbox** card offers two shortcuts that create a sandbox connection
 
 | Button | What it does |
 | --- | --- |
-| **Leaky test account** | Plaid `user_custom` seeded with a Canadian chequing account full of known leaks (bilingual monthly fees, NSF, FX fee, Netflix, a Spotify price hike, a GoodLife PAD, a double charge). Falls back to the Plaid sample data if your Plaid account rejects custom users. |
+| **Leaky test account** | Plaid `user_custom` seeded with a Canadian chequing account full of known leaks (bilingual monthly fees, NSF, FX fee, Netflix, a Spotify price hike, a GoodLife PAD, a double charge, Crave renewing tomorrow, and a $1 card-testing charge that triggers a suspicious-charge alert). Falls back to the Plaid sample data if your Plaid account rejects custom users. |
 | **Plaid sample data** | Plaid's `user_transactions_dynamic` realistic transaction history. |
 
 The app reaches the server on your computer's LAN IP (taken from Metro) on port 4000. Set `EXPO_PUBLIC_API_URL` in
@@ -88,6 +89,38 @@ The app reaches the server on your computer's LAN IP (taken from Metro) on port 
 
 Pick any institution, e.g. **First Platypus Bank** (`ins_109508`). `PLAID_COUNTRY_CODES=US,CA` also shows Canadian
 institutions once Canada is enabled on your Plaid account.
+
+## Recording the demo video
+
+**Before you record**
+1. Put your Plaid **Sandbox** keys and a `MASTER_KEY` in `server/.env` (see step 2 above).
+2. Start the server: `cd server && npm run dev`.
+3. In a second terminal, run `npm run smoke`. Every line should be ✓, ending with "Ready to record". Two common
+   failures:
+   - "Plaid accepted the leaky test account" shows ✗: Plaid fell back to its sample data, which has fewer leaks.
+     The demo still works, but the receipt will be smaller.
+   - An error mentioning Canada: set `PLAID_COUNTRY_CODES=US` in `server/.env` and restart the server.
+4. Start the app (`cd mobile && npx expo start`) on a phone on the same Wi-Fi, or in the iOS simulator. Expo Go is
+   fine with the **Leaky test account** button. Use a development build only if you want to film Plaid's own
+   bank-login screen (log in with `user_good` / `pass_good`).
+5. Turn on Do Not Disturb, and set the phone to dark or light mode to match the look you want.
+
+**Shot list**
+1. Welcome → **Scan my accounts**.
+2. Consent: show the four promises, flip on "Help improve leak detection" → **Continue**.
+3. Connect → **Leaky test account**. Show the "Scanning…" screen.
+4. Leak Receipt:
+   - Pause on the yearly total.
+   - Scroll the leaks: GoodLife, Crave, bank fees, Netflix, the Spotify price hike, the double charge.
+5. The suspicious **$1.00 at QWKMART** card at the top → **Not me**. Show the four steps.
+6. Mark a few leaks: **Don't need it** on GoodLife, **Keep it** on iCloud. The total updates.
+7. Tap the list icon (top right) → live accounts and transactions ("not stored by Looni").
+8. Back → scroll down → **Disconnect & delete my data**. This doubles as the privacy story.
+
+**Reset between takes:** step 8 wipes everything, so each take starts from the welcome screen.
+
+Home (Leak Score, Coming up), the Leak Hunt, Quests and the Alerts inbox already work on the server. They show up in
+the app once the screens are built from the Stitch mocks; record the final video after that.
 
 ## The Phase 1 rules engine (`server/src/engine`)
 
