@@ -13,13 +13,18 @@ and savings history, and the app asks them to reconnect.
 | Data | Stored? | Where / how | Deleted when |
 | --- | --- | --- | --- |
 | Bank username / password | **Never** | Entered in Plaid Link only | n/a |
-| Raw transactions, descriptors, balances | **Never** | In memory during a scan or a live `/api/transactions` call | End of request |
+| Raw transactions, descriptors, balances | **Never** | In memory during a scan or a live `/api/transactions` / `/api/overview` call | End of request |
+| Uploaded statement files (CSV/TXT) | **Never** | Parsed in memory by `/api/statements`; a preview stores nothing, a save stores only findings like a bank scan | End of request |
 | Plaid access token | Yes | `items.access_token_enc`: AES-256-GCM under the master key, bound to its item id | User disconnects (also revoked at Plaid via `/item/remove`) |
 | Institution name | Yes | `items.institution_enc`: user's own key | User disconnects |
 | Leak findings (title, merchant, amounts, that leak's own charge dates) | Yes | `leaks.payload_enc`: user's own key | User disconnects (crypto-shredded) |
 | Leak status, kind, first/last seen, verdict | Yes, plaintext | `leaks` | User disconnects |
 | Scan summaries (total, counts, Leak Score) | Yes | `scans.summary_enc`: user's own key | User disconnects |
 | Alert inbox (title, body, leak id) | Yes | `alerts.payload_enc`: user's own key | User disconnects |
+| Switch kit (recurring payments and deposits: display name, cadence, amount, next date) | Yes | `user_state.switch_kit_enc`: user's own key | User disconnects (crypto-shredded) |
+| Mortgage renewal date, balance and rates the user typed in | Yes | `user_state.renewal_enc`: user's own key | User clears it, or disconnects |
+| Rate Block pledge | Yes, plaintext | `rate_block_pledges`: province and renewal quarter only (e.g. `ON-2027-Q1`) | User leaves the pool, or disconnects |
+| Switch kit "moved" ticks, newcomer/student track progress | Yes, plaintext | Opaque item hashes and fixed task ids, no amounts or merchants | User disconnects |
 | Push tokens | Yes | `push_tokens.token_enc`: user's own key, plus a SHA-256 hash for de-duplication | User disconnects, or the push service reports the device gone |
 | Hunts, quests, badges, notification preferences, time zone | Yes, plaintext | Contains no amounts or merchants (hunts store opaque leak ids only) | User disconnects |
 | Training examples | Only with opt-in consent | `training_labels`: merchant key, cadence, *amount ranges*, kind, verdict, consent version. Keyed by a random `subject_id`, **no user id** | Kept: it can't be linked to anyone once the user is deleted |

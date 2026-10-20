@@ -3,11 +3,14 @@ import { type ItemRow, type ItemStatus, itemsForUser, markItemScanned, scansForU
 import { localToday, notifyUser } from "./engagement/service.js";
 import { detectSuspicious } from "./engine/anomaly.js";
 import { buildLeakReceipt } from "./engine/receipt.js";
+import type { ForecastAccount } from "./engine/forecast.js";
+import { detectSwitchItems } from "./engine/switchkit.js";
 import type { Txn } from "./engine/types.js";
 import { openAccessToken } from "./keys.js";
 import { applyScan, ensureUser, readReceipt, type ScanSummary } from "./ledger.js";
 import { log } from "./log.js";
 import { plaid, plaidError } from "./plaid.js";
+import { saveSwitchKit } from "./state.js";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -123,6 +126,36 @@ export async function fetchAllForUser(
   return { data, complete, scannedItemIds };
 }
 
+/**
+ * Live account balances for the overview and the 30-day forecast. Read from
+ * Plaid for this response only; balances are never written to the database.
+ */
+export async function fetchAccounts(userId: string): Promise<{ accounts: ForecastAccount[]; complete: boolean }> {
+  const accounts: ForecastAccount[] = [];
+  let complete = true;
+  for (const item of itemsForUser(userId)) {
+    if (item.status === "revoked") continue;
+    try {
+      const { data } = await plaid.accountsGet({ access_token: await openAccessToken(item.access_token_enc, item.item_id) });
+      for (const a of data.accounts) {
+        accounts.push({
+          id: a.account_id,
+          name: a.official_name || a.name,
+          type: a.type,
+          subtype: a.subtype ?? null,
+          balance: a.balances.current ?? null,
+          available: a.balances.available ?? null,
+        });
+      }
+    } catch (err) {
+      complete = false;
+      const status = statusForPlaidError(plaidError(err)?.body.error_code as string | undefined);
+      if (status) setItemStatus(item.item_id, status);
+    }
+  }
+  return { accounts, complete };
+}
+
 // One scan per user at a time (a webhook and a pull-to-refresh can arrive together).
 const running = new Map<string, Promise<ScanSummary | null>>();
 
@@ -135,39 +168,50 @@ export function runScan(userId: string, opts: { waitForData?: boolean } = {}): P
   if (inFlight) return inFlight;
 
   const job = (async () => {
-    const user = await ensureUser(userId);
+    await ensureUser(userId);
     const items = itemsForUser(userId);
     if (items.length === 0) return null;
 
     const { data, complete, scannedItemIds } = await fetchAllForUser(userId, opts);
     if (data.length === 0) return null; // nothing readable: keep the ledger as it was
 
-    const txns = data.flatMap((d) => d.txns);
-    const today = localToday(user);
-    const receipt = buildLeakReceipt(txns, { asOf: today });
-
-    // Suspicious charges: "zombie" check needs the subscriptions the user said they don't need.
-    const ledger = await readReceipt(user);
-    const cancelled = new Map(
-      [...ledger.leaks, ...ledger.resolved]
-        .filter((l) => l.kind === "subscription" && l.verdict === "confirmed" && l.verdictAt)
-        .map((l) => [l.merchantKey, l.verdictAt!.slice(0, 10)]),
-    );
-    const firstScan = scansForUser(userId, 1).length === 0;
-    receipt.leaks.push(
-      ...detectSuspicious(txns, { asOf: today, lookbackDays: firstScan ? 7 : 14, cancelledMerchants: cancelled }).map((l) => ({
-        ...l,
-        verdict: null,
-      })),
-    );
-
-    const summary = await applyScan(user, receipt, txns, { today, complete });
+    const summary = await analyzeAndStore(userId, data.flatMap((d) => d.txns), { complete });
     for (const id of scannedItemIds) markItemScanned(id);
-    // Alerts come from the updated ledger; a push failure never fails the scan.
-    await notifyUser((await ensureUser(userId))).catch((err) => log.warn("notify after scan failed", { err }));
     return summary;
   })().finally(() => running.delete(userId));
 
   running.set(userId, job);
   return job;
+}
+
+/**
+ * Transactions (from Plaid or a statement file) → findings in the ledger.
+ * Shared by bank scans and statement imports; the transactions themselves
+ * are never written anywhere.
+ */
+export async function analyzeAndStore(userId: string, txns: Txn[], opts: { complete: boolean }): Promise<ScanSummary> {
+  const user = await ensureUser(userId);
+  const today = localToday(user);
+  const receipt = buildLeakReceipt(txns, { asOf: today });
+
+  // Suspicious charges: "zombie" check needs the subscriptions the user said they don't need.
+  const ledger = await readReceipt(user);
+  const cancelled = new Map(
+    [...ledger.leaks, ...ledger.resolved]
+      .filter((l) => l.kind === "subscription" && l.verdict === "confirmed" && l.verdictAt)
+      .map((l) => [l.merchantKey, l.verdictAt!.slice(0, 10)]),
+  );
+  const firstScan = scansForUser(userId, 1).length === 0;
+  receipt.leaks.push(
+    ...detectSuspicious(txns, { asOf: today, lookbackDays: firstScan ? 7 : 14, cancelledMerchants: cancelled }).map((l) => ({
+      ...l,
+      verdict: null,
+    })),
+  );
+
+  const summary = await applyScan(user, receipt, txns, { today, complete: opts.complete });
+  await saveSwitchKit(user, detectSwitchItems(txns, today));
+  // Alerts come from the updated ledger; a push failure never fails the scan.
+  await notifyUser(await ensureUser(userId)).catch((err) => log.warn("notify after scan failed", { err }));
+  return summary;
 }

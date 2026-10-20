@@ -9,10 +9,12 @@ import {
 } from "../db.js";
 import { openForUser, sealForUser } from "../keys.js";
 import type { LedgerLeak, LedgerReceipt } from "../ledger.js";
+import { dueMilestone } from "../engine/renewal.js";
+import { toDay } from "../engine/util.js";
 import { log } from "../log.js";
 import { daysBetween, isoWeek, localNow } from "./time.js";
 
-export type AlertKind = "suspicious" | "renewal" | "fee" | "price_hike" | "new_leak" | "hunt" | "report";
+export type AlertKind = "suspicious" | "renewal" | "mortgage" | "fee" | "price_hike" | "new_leak" | "hunt" | "report";
 
 export interface NotifySettings {
   push: boolean;
@@ -28,7 +30,7 @@ export const DEFAULT_SETTINGS: NotifySettings = {
   hideAmounts: true,
   quietStart: 21,
   quietEnd: 8,
-  kinds: { suspicious: true, renewal: true, fee: true, price_hike: true, new_leak: true, hunt: true, report: true },
+  kinds: { suspicious: true, renewal: true, mortgage: true, fee: true, price_hike: true, new_leak: true, hunt: true, report: true },
 };
 
 export function parseSettings(json: string | null | undefined): NotifySettings {
@@ -67,6 +69,8 @@ export interface CandidateContext {
   /** 0 = Monday. */
   weekday: number;
   huntRemaining: number;
+  /** Mortgage maturity date, when the user has set one. */
+  mortgageMaturity?: string | null;
 }
 
 /** Everything worth telling the user right now, each with a stable idempotency key. */
@@ -137,6 +141,24 @@ export function buildCandidates(r: LedgerReceipt, ctx: CandidateContext): AlertC
         title: l.kind === "duplicate" ? "Possible double charge" : `New recurring charge: ${displayName(l)}`,
         body: `${l.detail}`,
         privateBody: l.kind === "duplicate" ? "You may have been charged twice." : "Looni spotted a new recurring charge.",
+      });
+    }
+  }
+
+  // Mortgage renewal milestones: 180, 120, 90 and 21 days out. Each fires once, even if the exact day was missed.
+  if (ctx.mortgageMaturity) {
+    const m = dueMilestone(ctx.mortgageMaturity, ctx.today);
+    if (m) {
+      const days = toDay(ctx.mortgageMaturity) - toDay(ctx.today);
+      out.push({
+        key: `mortgage:${ctx.mortgageMaturity}:${m.id}`,
+        kind: "mortgage",
+        security: false,
+        priority: m.days === 21 ? 90 : 75,
+        leakId: null,
+        title: `${days} day${days === 1 ? "" : "s"} to your mortgage renewal`,
+        body: m.action,
+        privateBody: m.action,
       });
     }
   }
@@ -220,7 +242,7 @@ export const hashToken = (token: string) => createHash("sha256").update(token).d
 export async function deliverAlerts(
   user: UserRow,
   receipt: LedgerReceipt,
-  opts: { now: Date; huntRemaining: number; sender: PushSender },
+  opts: { now: Date; huntRemaining: number; sender: PushSender; mortgageMaturity?: string | null },
 ): Promise<{ created: AlertCandidate[]; pushed: PushMessage[] }> {
   const settings = parseSettings(user.notify_settings);
   const local = localNow(opts.now, user.timezone);
@@ -228,7 +250,12 @@ export async function deliverAlerts(
   const nowIso = opts.now.toISOString().replace("T", " ").slice(0, 19);
   const weekAgo = new Date(opts.now.getTime() - 7 * 86_400_000).toISOString().replace("T", " ").slice(0, 19);
 
-  const candidates = buildCandidates(receipt, { today: local.date, weekday: local.weekday, huntRemaining: opts.huntRemaining })
+  const candidates = buildCandidates(receipt, {
+    today: local.date,
+    weekday: local.weekday,
+    huntRemaining: opts.huntRemaining,
+    mortgageMaturity: opts.mortgageMaturity,
+  })
     .filter((c) => settings.kinds[c.kind])
     .filter((c) => c.security || !quiet);
 

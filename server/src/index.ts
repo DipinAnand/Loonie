@@ -20,12 +20,21 @@ import {
   upsertPushToken,
   completeQuest,
   completedQuests,
+  getPledge,
+  poolSize,
+  setPledge,
+  setSwitchMove,
+  setTrackTask,
+  trackProgress,
   type UserRow,
 } from "./db.js";
+import { nextMove, quietGrade } from "./engine/advice.js";
+import { forecast, netWorth } from "./engine/forecast.js";
 import { NOT_ME_STEPS } from "./engine/anomaly.js";
 import { currentHunt } from "./engagement/hunt.js";
 import { hashToken, parseSettings } from "./engagement/notify.js";
 import { isSelfReported } from "./engagement/quests.js";
+import { TRACKS, trackView } from "./engagement/tracks.js";
 import {
   alertInbox,
   badgesFor,
@@ -36,13 +45,19 @@ import {
   questsFor,
   shareStatsFor,
   syncBadges,
+  yearReceipt,
 } from "./engagement/service.js";
+import { buildLeakReceipt } from "./engine/receipt.js";
+import { renewalQuarter, validRenewal } from "./engine/renewal.js";
 import { leakyScenarioSandboxConfig } from "./engine/scenario.js";
 import { forgetDek, openAccessToken, sealAccessToken, sealForUser } from "./keys.js";
 import { ensureUser, labelLeak, readReceipt, sealInstitution } from "./ledger.js";
 import { log } from "./log.js";
 import { plaid, plaidError } from "./plaid.js";
-import { fetchAllForUser, runScan } from "./scan.js";
+import { analyzeAndStore, fetchAccounts, fetchAllForUser, runScan } from "./scan.js";
+import { readRenewal, readSwitchKit, saveRenewal } from "./state.js";
+import { mergeStatements, parseStatement, StatementError, type StatementFile } from "./statement/csv.js";
+import { CALCULATORS } from "./tools/calc.js";
 import { handlePlaidWebhook, verifyPlaidWebhook } from "./webhooks.js";
 
 assertConfig();
@@ -68,7 +83,10 @@ app.post("/webhooks/plaid", express.raw({ type: "application/json", limit: "64kb
   handlePlaidWebhook(JSON.parse(body.toString("utf8"))).catch((err) => log.warn("webhook failed", { err }));
 });
 
-app.use(express.json({ limit: "16kb" }));
+// Statement files are the only large bodies; everything else stays tiny.
+const smallJson = express.json({ limit: "16kb" });
+const statementJson = express.json({ limit: "8mb" });
+app.use((req, res, next) => (req.path === "/api/statements" ? statementJson : smallJson)(req, res, next));
 app.use("/api", rateLimit({ windowMs: 60_000, limit: 120, standardHeaders: "draft-8", legacyHeaders: false }));
 
 // MVP identity: the app generates a random id on first launch and keeps it in
@@ -371,6 +389,214 @@ app.get("/api/report", async (req, res) => {
     return;
   }
   res.json(await monthlyReport(userOf(req), month));
+});
+
+// ---- statements, renewal, switch kit, tracks, tools ----------------------------
+
+const MAX_STATEMENT_FILES = 12;
+
+/**
+ * Statement import: CSV/TXT exports parsed in memory. With `save: false` it is
+ * a preview (nothing stored, the free scan); with `save: true` the findings go
+ * to the ledger like a bank scan. The files themselves are never stored.
+ */
+app.post("/api/statements", async (req, res) => {
+  const files = req.body?.files;
+  if (!Array.isArray(files) || files.length === 0 || files.length > MAX_STATEMENT_FILES) {
+    res.status(400).json({ error: `Send 1 to ${MAX_STATEMENT_FILES} files as { name, text }` });
+    return;
+  }
+  const parsed = [];
+  try {
+    for (const f of files as StatementFile[]) {
+      if (typeof f?.name !== "string" || typeof f?.text !== "string") throw new StatementError("Each file needs a name and its text");
+      parsed.push(parseStatement({ name: f.name.slice(0, 200), text: f.text }));
+    }
+  } catch (err) {
+    if (err instanceof StatementError) {
+      res.status(422).json({ error: err.message });
+      return;
+    }
+    throw err;
+  }
+  const txns = mergeStatements(parsed);
+  const statements = parsed.map((p) => ({ name: p.name, transactions: p.txns.length, skippedRows: p.skippedRows, header: p.header, columns: p.columns }));
+
+  if (req.body?.save === true) {
+    // A statement is a snapshot, not a live feed: never resolve leaks because a file didn't show them.
+    const summary = await analyzeAndStore(userOf(req).id, txns, { complete: false });
+    res.json({ saved: true, statements, summary, receipt: await readReceipt(await ensureUser(userOf(req).id)) });
+    return;
+  }
+  const receipt = buildLeakReceipt(txns, { asOf: localToday(userOf(req)) });
+  res.json({
+    saved: false,
+    statements,
+    receipt: { ...receipt, grade: quietGrade(receipt.totalAnnualImpact), nextMove: nextMove(receipt.leaks), recurring: undefined },
+  });
+});
+
+app.get("/api/renewal", async (req, res) => {
+  const user = userOf(req);
+  res.json({ renewal: await readRenewal(user, localToday(user)) });
+});
+
+app.put("/api/renewal", async (req, res) => {
+  const user = userOf(req);
+  const input = validRenewal(req.body);
+  if (!input) {
+    res.status(400).json({ error: "maturityDate (YYYY-MM-DD) is required; balance and rates are optional numbers" });
+    return;
+  }
+  await saveRenewal(user, input);
+  await notifyUser(user).catch((err) => log.warn("notify after renewal failed", { err }));
+  res.json({ renewal: await readRenewal(user, localToday(user)) });
+});
+
+app.delete("/api/renewal", async (req, res) => {
+  await saveRenewal(userOf(req), null);
+  res.json({ ok: true });
+});
+
+app.get("/api/switch-kit", async (req, res) => {
+  res.json(await readSwitchKit(userOf(req)));
+});
+
+app.post("/api/switch-kit/:key", async (req, res) => {
+  const user = userOf(req);
+  const key = String(req.params.key);
+  const kit = await readSwitchKit(user);
+  if (!kit.items.some((i) => i.key === key) || typeof req.body?.moved !== "boolean") {
+    res.status(400).json({ error: "Unknown item, or moved is not true/false" });
+    return;
+  }
+  setSwitchMove(user.id, key, req.body.moved, localToday(user));
+  res.json(await readSwitchKit(user));
+});
+
+const isTrack = (id: string): id is keyof typeof TRACKS => Object.hasOwn(TRACKS, id);
+
+async function trackFor(user: UserRow, id: keyof typeof TRACKS) {
+  const receipt = await readReceipt(user);
+  const all = [...receipt.leaks, ...receipt.resolved];
+  return trackView(TRACKS[id], trackProgress(user.id, id), {
+    scanned: !!receipt.lastScanAt,
+    subscriptionsReviewed: all.some((l) => l.kind === "subscription" && l.verdict !== null),
+  });
+}
+
+app.get("/api/tracks", async (req, res) => {
+  const user = userOf(req);
+  res.json({ tracks: await Promise.all((Object.keys(TRACKS) as (keyof typeof TRACKS)[]).map((id) => trackFor(user, id))) });
+});
+
+app.get("/api/tracks/:track", async (req, res) => {
+  const id = String(req.params.track);
+  if (!isTrack(id)) {
+    res.status(404).json({ error: "Unknown track" });
+    return;
+  }
+  res.json(await trackFor(userOf(req), id));
+});
+
+app.post("/api/tracks/:track/:task", async (req, res) => {
+  const user = userOf(req);
+  const id = String(req.params.track);
+  const task = String(req.params.task);
+  if (!isTrack(id) || !TRACKS[id].tasks.some((t) => t.id === task && !t.auto) || typeof req.body?.done !== "boolean") {
+    res.status(400).json({ error: "Unknown track or task, or done is not true/false" });
+    return;
+  }
+  setTrackTask(user.id, id, task, req.body.done, localToday(user));
+  res.json(await trackFor(user, id));
+});
+
+/**
+ * "Everything you have" and "Know before it bounces": live balances from
+ * Plaid (not stored), net worth, and the next 30 days of chequing from the
+ * recurring payments and deposits in the switch kit.
+ */
+app.get("/api/overview", async (req, res) => {
+  const user = userOf(req);
+  const today = localToday(user);
+  const { accounts, complete } = await fetchAccounts(user.id);
+  const kit = await readSwitchKit(user);
+  const receipt = await readReceipt(user);
+  const renewal = await readRenewal(user, today);
+  res.json({
+    complete,
+    accounts,
+    netWorth: netWorth(accounts),
+    forecast: forecast(accounts, kit.items, today),
+    leaksPerYear: receipt.totalAnnualImpact,
+    grade: receipt.grade,
+    renewal: renewal ? { daysLeft: renewal.daysLeft, maturityDate: renewal.maturityDate } : null,
+  });
+});
+
+app.get("/api/receipt/year", async (req, res) => {
+  const user = userOf(req);
+  const year = String(req.query.year ?? localToday(user).slice(0, 4));
+  if (!/^\d{4}$/.test(year)) {
+    res.status(400).json({ error: "year must be YYYY" });
+    return;
+  }
+  res.json(await yearReceipt(user, year));
+});
+
+// Rate Block (coming 2027): renewals pooled by province and quarter, negotiated as one block once a pool reaches 500.
+const RATE_BLOCK_GOAL = 500;
+const PROVINCES = new Set(["AB", "BC", "MB", "NB", "NL", "NS", "NT", "NU", "ON", "PE", "QC", "SK", "YT"]);
+
+async function rateBlockFor(user: UserRow) {
+  const pledge = getPledge(user.id);
+  const renewal = await readRenewal(user, localToday(user));
+  return {
+    goal: RATE_BLOCK_GOAL,
+    pledged: !!pledge,
+    pool: pledge ? { id: pledge.pool_id, joined: poolSize(pledge.pool_id), joinedAt: pledge.joined_at } : null,
+    renewalQuarter: renewal ? renewalQuarter(renewal.maturityDate) : null,
+    status: "coming_2027" as const,
+  };
+}
+
+app.get("/api/rate-block", async (req, res) => {
+  res.json(await rateBlockFor(userOf(req)));
+});
+
+app.post("/api/rate-block/join", async (req, res) => {
+  const user = userOf(req);
+  const province = String(req.body?.province ?? "").toUpperCase();
+  const renewal = await readRenewal(user, localToday(user));
+  if (!PROVINCES.has(province) || !renewal) {
+    res.status(400).json({ error: "Set your renewal date first, and send a two-letter province code" });
+    return;
+  }
+  setPledge(user.id, `${province}-${renewalQuarter(renewal.maturityDate)}`, localToday(user));
+  res.json(await rateBlockFor(user));
+});
+
+app.delete("/api/rate-block", async (req, res) => {
+  setPledge(userOf(req).id, null, "");
+  res.json(await rateBlockFor(userOf(req)));
+});
+
+/** Calculators from /tools. Inputs are plain numbers (and a few enums); out-of-range numbers are refused. */
+app.post("/api/tools/:id", (req, res) => {
+  const id = String(req.params.id);
+  if (!Object.hasOwn(CALCULATORS, id)) {
+    res.status(404).json({ error: "Unknown calculator" });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  for (const [k, v] of Object.entries(body)) {
+    if (typeof v === "number" ? !Number.isFinite(v) || v < 0 || v > 100_000_000 : typeof v !== "string" || v.length > 20) {
+      res.status(400).json({ error: `Invalid value for ${k}` });
+      return;
+    }
+  }
+  const calc = CALCULATORS[id as keyof typeof CALCULATORS] as (input: Record<string, unknown>) => unknown;
+  res.json({ result: calc(body) });
 });
 
 /**

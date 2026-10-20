@@ -120,7 +120,7 @@ describe("quests", () => {
 });
 
 describe("alert candidates", () => {
-  const base = { lastScanAt: "2026-10-09 10:00:00", lastScanComplete: true, totalAnnualImpact: 0, savedPerYear: 0, transactionCount: 0, windowStart: null, resolved: [], connections: [] };
+  const base = { lastScanAt: "2026-10-09 10:00:00", lastScanComplete: true, totalAnnualImpact: 0, grade: null, nextMove: null, savedPerYear: 0, transactionCount: 0, windowStart: null, resolved: [], connections: [] };
 
   it("reminds before renewals, hides amounts in the private text, and skips subscriptions the user keeps", () => {
     const sub = leak({ meta: { nextExpectedDate: "2026-10-10", lastAmount: 16.49 } });
@@ -156,7 +156,7 @@ describe("delivery", () => {
   const sent: { to: string; title: string; body: string }[][] = [];
   const sender = { send: async (m: { to: string; title: string; body: string }[]) => (sent.push(m), { deadTokens: [] }) };
   const receiptWith = (leaks: LedgerLeak[], suspicious: LedgerLeak[] = []) => ({
-    lastScanAt: null, lastScanComplete: true, totalAnnualImpact: 0, savedPerYear: 0, transactionCount: 0, windowStart: null, resolved: [], connections: [], leaks, suspicious,
+    lastScanAt: null, lastScanComplete: true, totalAnnualImpact: 0, grade: null, nextMove: null, savedPerYear: 0, transactionCount: 0, windowStart: null, resolved: [], connections: [], leaks, suspicious,
   });
   const noon = new Date("2026-10-08T16:00:00Z"); // 12:00 in Toronto, a Thursday
   const night = new Date("2026-10-09T02:00:00Z"); // 22:00 in Toronto

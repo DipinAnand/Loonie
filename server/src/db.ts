@@ -124,6 +124,40 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS alerts_user_time ON alerts(user_id, created_at);
 
+  -- Findings that aren't leaks: the switch kit (recurring payments and deposits, no descriptors
+  -- beyond a display name) and the user's mortgage renewal date. Both sealed with the user's key.
+  CREATE TABLE IF NOT EXISTS user_state (
+    user_id        TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    switch_kit_enc TEXT,
+    renewal_enc    TEXT,
+    updated_at     TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Switch kit items the user has moved to their new account (item keys are opaque hashes).
+  CREATE TABLE IF NOT EXISTS switch_moves (
+    user_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    item_key TEXT NOT NULL,
+    moved_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, item_key)
+  );
+
+  -- Newcomer / student checklist progress. Task ids are fixed strings, no financial data.
+  CREATE TABLE IF NOT EXISTS track_progress (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    track   TEXT NOT NULL,
+    task_id TEXT NOT NULL,
+    done_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, track, task_id)
+  );
+
+  -- Rate Block pledges: one pool per province and renewal quarter. Nothing about the mortgage itself.
+  CREATE TABLE IF NOT EXISTS rate_block_pledges (
+    user_id   TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    pool_id   TEXT NOT NULL,                 -- e.g. ON-2027-Q1
+    joined_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS rate_block_pool ON rate_block_pledges(pool_id);
+
   -- De-identified, consented training rows. Deliberately no user_id and no
   -- foreign key: the only link back is subject_enc, destroyed with the user.
   CREATE TABLE IF NOT EXISTS training_labels (
@@ -416,4 +450,68 @@ export function markAlertsRead(userId: string, keys: string[] | "all", at: strin
   }
   const stmt = db.prepare("UPDATE alerts SET read_at = ? WHERE user_id = ? AND alert_key = ? AND read_at IS NULL");
   for (const k of keys) stmt.run(at, userId, k);
+}
+
+// ---- switch kit, renewal, tracks --------------------------------------------------
+
+export function getUserState(userId: string): { switch_kit_enc: string | null; renewal_enc: string | null } | undefined {
+  return db.prepare("SELECT switch_kit_enc, renewal_enc FROM user_state WHERE user_id = ?").get(userId) as
+    | { switch_kit_enc: string | null; renewal_enc: string | null }
+    | undefined;
+}
+
+export function setSwitchKit(userId: string, enc: string): void {
+  db.prepare(
+    `INSERT INTO user_state (user_id, switch_kit_enc) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET switch_kit_enc = excluded.switch_kit_enc, updated_at = datetime('now')`,
+  ).run(userId, enc);
+}
+
+export function setRenewal(userId: string, enc: string | null): void {
+  db.prepare(
+    `INSERT INTO user_state (user_id, renewal_enc) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET renewal_enc = excluded.renewal_enc, updated_at = datetime('now')`,
+  ).run(userId, enc);
+}
+
+export function switchMoves(userId: string): Map<string, string> {
+  const rows = db.prepare("SELECT item_key, moved_at FROM switch_moves WHERE user_id = ?").all(userId) as { item_key: string; moved_at: string }[];
+  return new Map(rows.map((r) => [r.item_key, r.moved_at]));
+}
+
+export function setSwitchMove(userId: string, itemKey: string, moved: boolean, at: string): void {
+  if (moved) db.prepare("INSERT OR IGNORE INTO switch_moves (user_id, item_key, moved_at) VALUES (?, ?, ?)").run(userId, itemKey, at);
+  else db.prepare("DELETE FROM switch_moves WHERE user_id = ? AND item_key = ?").run(userId, itemKey);
+}
+
+export function trackProgress(userId: string, track: string): Map<string, string> {
+  const rows = db.prepare("SELECT task_id, done_at FROM track_progress WHERE user_id = ? AND track = ?").all(userId, track) as {
+    task_id: string;
+    done_at: string;
+  }[];
+  return new Map(rows.map((r) => [r.task_id, r.done_at]));
+}
+
+export function setTrackTask(userId: string, track: string, taskId: string, done: boolean, at: string): void {
+  if (done) db.prepare("INSERT OR IGNORE INTO track_progress (user_id, track, task_id, done_at) VALUES (?, ?, ?, ?)").run(userId, track, taskId, at);
+  else db.prepare("DELETE FROM track_progress WHERE user_id = ? AND track = ? AND task_id = ?").run(userId, track, taskId);
+}
+
+export function getPledge(userId: string): { pool_id: string; joined_at: string } | undefined {
+  return db.prepare("SELECT pool_id, joined_at FROM rate_block_pledges WHERE user_id = ?").get(userId) as
+    | { pool_id: string; joined_at: string }
+    | undefined;
+}
+
+export function setPledge(userId: string, poolId: string | null, at: string): void {
+  if (poolId) {
+    db.prepare(
+      `INSERT INTO rate_block_pledges (user_id, pool_id, joined_at) VALUES (?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET pool_id = excluded.pool_id, joined_at = excluded.joined_at`,
+    ).run(userId, poolId, at);
+  } else db.prepare("DELETE FROM rate_block_pledges WHERE user_id = ?").run(userId);
+}
+
+export function poolSize(poolId: string): number {
+  return (db.prepare("SELECT COUNT(*) AS n FROM rate_block_pledges WHERE pool_id = ?").get(poolId) as { n: number }).n;
 }

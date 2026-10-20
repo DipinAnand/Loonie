@@ -26,8 +26,11 @@ export interface RecurringSeries {
   count: number;
   medianAmount: number;
   lastAmount: number;
-  /** Old price when the charge recently stepped to a new level, else null. */
+  /** Old price when the charge stepped to a new level, else null. */
   previousAmount: number | null;
+  /** First charge at the new price, and how many charges since (null without a step). */
+  stepDate: string | null;
+  chargesSinceStep: number | null;
   firstDate: string;
   lastDate: string;
   nextExpectedDate: string;
@@ -47,7 +50,17 @@ export interface LeakMeta {
   /** For suspicious charges: which rule fired. */
   rule?: string;
   date?: string;
+  /** "high" when a fee line or a strict pattern proves it; "medium" when the user should check. */
+  confidence?: Confidence;
+  /** Rules-engine version that produced the finding, e.g. "1.3". */
+  ruleVersion?: string;
+  /** One line on what to do about it. */
+  fix?: string;
+  /** Exact words to say to the bank or merchant, when there is a call to make. */
+  script?: string;
 }
+
+export type Confidence = "high" | "medium";
 
 export interface Leak {
   /** Stable across re-runs so user labels stick to the same leak. */

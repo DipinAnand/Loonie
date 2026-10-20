@@ -7,6 +7,7 @@ import { deliverAlerts, expoPushSender, type PushSender } from "./notify.js";
 import { levelFor, outcomeStreaks, savedToDate } from "./progress.js";
 import { evaluateQuests, questReward } from "./quests.js";
 import { leakScore } from "./score.js";
+import { readRenewal, readRenewalInput, readSwitchKit } from "../state.js";
 import { daysBetween, localNow } from "./time.js";
 
 export const localToday = (user: UserRow, now = new Date()) => localNow(now, user.timezone).date;
@@ -51,11 +52,13 @@ export async function homeFor(user: UserRow, now = new Date()) {
   const upcoming = receipt.leaks
     .filter((l) => l.kind === "subscription" && l.verdict !== "dismissed" && l.meta.nextExpectedDate)
     .map((l) => ({ leakId: l.id, title: l.title, amount: l.meta.lastAmount ?? null, date: l.meta.nextExpectedDate!, inDays: daysBetween(today, l.meta.nextExpectedDate!) }))
-    .filter((u) => u.inDays >= 0 && u.inDays <= 14)
+    .filter((u) => u.inDays >= 0 && u.inDays <= 30)
     .sort((a, b) => a.inDays - b.inDays);
 
   const scoreHistory = await scoreTrend(user);
   const unread = alertsFor(user.id, 100).filter((a) => !a.read_at).length;
+  const renewal = await readRenewal(user, today);
+  const switchKit = await readSwitchKit(user);
 
   return {
     today,
@@ -63,6 +66,10 @@ export async function homeFor(user: UserRow, now = new Date()) {
     savedPerYear: receipt.savedPerYear,
     savedToDate: saved,
     stillLeakingPerYear: receipt.totalAnnualImpact,
+    grade: receipt.grade,
+    nextMove: receipt.nextMove,
+    renewal: renewal ? { daysLeft: renewal.daysLeft, action: renewal.action, band: renewal.band } : null,
+    switchKit: { moved: switchKit.moved, total: switchKit.total },
     loonies,
     ...levelFor(loonies),
     streaks: { ...streaks, huntWeeks: hunt.streak },
@@ -142,7 +149,8 @@ export async function notifyUser(user: UserRow, now = new Date(), sender: PushSe
   const today = localToday(user, now);
   const receipt = await readReceipt(user);
   const hunt = await currentHunt(user, today);
-  return deliverAlerts(user, receipt, { now, huntRemaining: hunt.remaining, sender });
+  const renewal = await readRenewalInput(user);
+  return deliverAlerts(user, receipt, { now, huntRemaining: hunt.remaining, sender, mortgageMaturity: renewal?.maturityDate ?? null });
 }
 
 export async function alertInbox(user: UserRow) {
@@ -153,4 +161,32 @@ export async function alertInbox(user: UserRow) {
     out.push({ key: a.alert_key, kind: a.kind, security: a.security === 1, createdAt: a.created_at, read: !!a.read_at, ...p });
   }
   return out;
+}
+
+/**
+ * "What your banks charged you" for one calendar year: money actually paid
+ * to each leak that year (from its charge history), and which ones are fixed.
+ * Shareable: titles are generic kinds of charge, never account numbers.
+ */
+export async function yearReceipt(user: UserRow, year: string) {
+  const receipt = await readReceipt(user);
+  const lines = [...receipt.leaks, ...receipt.resolved]
+    .map((l) => ({
+      id: l.id,
+      kind: l.kind,
+      title: l.title,
+      amount: Math.round(l.history.filter((h) => h.date.startsWith(year)).reduce((s, h) => s + h.amount, 0) * 100) / 100,
+      fixed: l.verdict === "confirmed" && l.status === "resolved",
+    }))
+    .filter((l) => l.amount > 0)
+    .sort((a, b) => b.amount - a.amount);
+  const charged = Math.round(lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
+  const fixed = lines.filter((l) => l.fixed);
+  return {
+    year,
+    charged,
+    lines,
+    fixedCount: fixed.length,
+    fixedAmount: Math.round(fixed.reduce((s, l) => s + l.amount, 0) * 100) / 100,
+  };
 }

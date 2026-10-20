@@ -70,7 +70,8 @@ describe("buildLeakReceipt", () => {
 
   it("finds every leak type in the scenario", () => {
     assert.ok(kinds("fee").some((l) => l.features.feeType === "monthly_account_fee"));
-    assert.ok(kinds("fee").some((l) => l.features.feeType === "nsf"));
+    // The scenario's $48 NSF is after March 12, 2026, so it lands above the $10 cap.
+    assert.ok(kinds("fee").some((l) => l.features.feeType === "nsf_over_cap"));
     assert.ok(kinds("fee").some((l) => l.features.feeType === "fx"));
     assert.ok(kinds("fee").some((l) => l.features.feeType === "transaction_fee"));
     assert.equal(kinds("price_hike").length, 1);

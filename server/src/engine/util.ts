@@ -61,3 +61,11 @@ export function merchantKey(name: string, merchantName?: string | null): string 
 export function titleCase(s: string): string {
   return s.replace(/\b\w/g, (c) => c.toUpperCase());
 }
+
+// "USD 45.00 @ 1.3712" or "45.00 USD" inside a descriptor marks a purchase made in another currency.
+const FOREIGN_DESCRIPTOR = /\b(USD|EUR|GBP|MXN|JPY|AUD|CHF|CNY|INR|HKD)\b\s?[\d.,]+|[\d.,]+\s?\b(USD|EUR|GBP|MXN|JPY|AUD|CHF|CNY|INR|HKD)\b|@\s?\d+\.\d{3,}/i;
+
+/** A purchase in a currency other than the account's home currency. */
+export function isForeignPurchase(t: { name: string; currency?: string | null }, home: string): boolean {
+  return (!!t.currency && t.currency !== home) || FOREIGN_DESCRIPTOR.test(t.name);
+}

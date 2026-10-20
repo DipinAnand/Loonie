@@ -16,6 +16,7 @@ import {
   upsertLeak,
   type UserRow,
 } from "./db.js";
+import { type NextMove, nextMove, quietGrade } from "./engine/advice.js";
 import { totalImpact } from "./engine/receipt.js";
 import { toTrainingFeatures } from "./engine/training.js";
 import type { Leak, LeakKind, LeakMeta, LeakReceipt, Txn, Verdict } from "./engine/types.js";
@@ -155,6 +156,10 @@ export interface LedgerReceipt {
   lastScanAt: string | null;
   lastScanComplete: boolean;
   totalAnnualImpact: number;
+  /** "Your bank's quiet score": A (under $50/yr) to D ($500+/yr). Null before the first scan. */
+  grade: "A" | "B" | "C" | "D" | null;
+  /** The one move that saves the most, with the words to use. */
+  nextMove: NextMove | null;
   /** Yearly cost of leaks the user confirmed and that have since stopped. */
   savedPerYear: number;
   transactionCount: number;
@@ -210,10 +215,13 @@ export async function readReceipt(user: UserRow): Promise<LedgerReceipt> {
     });
   }
 
+  const total = totalImpact(open);
   return {
     lastScanAt: lastScan?.ran_at ?? null,
     lastScanComplete: lastScan ? lastScan.complete === 1 : false,
-    totalAnnualImpact: totalImpact(open),
+    totalAnnualImpact: total,
+    grade: lastScan ? quietGrade(total) : null,
+    nextMove: nextMove(open),
     savedPerYear: round2(saved),
     transactionCount: summary?.transactionCount ?? 0,
     windowStart: summary?.windowStart ?? null,
