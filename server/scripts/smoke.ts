@@ -71,6 +71,22 @@ async function main() {
   const { alerts } = await call<{ alerts: { kind: string; title: string }[] }>("GET", "/api/alerts");
   check(alerts.length > 0, "Alerts created", alerts.map((a) => a.kind).join(", ") || "none");
 
+  type BillRow = { name: string; kind: string; status: string; amount: number; nextDate: string; change: unknown };
+  const bills = await call<{
+    ready: boolean;
+    bills: BillRow[];
+    paydays: { nextDate: string }[];
+    monthlyTotal: number;
+    coverage: { status: string; due: number; payday: { date: string } | null; balance: number | null };
+  }>("GET", "/api/bills");
+  check(bills.ready, "Bill tracker built", bills.ready ? `${bills.bills.length} bills, $${bills.monthlyTotal.toFixed(2)}/mo` : "");
+  const named = (k: string) => bills.bills?.find((b) => b.name.toLowerCase().includes(k));
+  check(!!named("rent") && named("rent")!.kind === "bill", "  …rent is tracked as a bill");
+  check(!!named("hydro")?.change, "  …hydro spike flagged", named("hydro") ? `$${named("hydro")!.amount}` : "missing");
+  check(named("daycare")?.status === "late", "  …late daycare payment flagged", named("daycare")?.status ?? "missing");
+  check(bills.paydays?.length > 0, "Next payday found", bills.paydays?.[0]?.nextDate ?? "none");
+  check(bills.coverage?.balance !== null, "Balance checked against bills before payday", bills.coverage ? `${bills.coverage.status}: $${bills.coverage.due.toFixed(2)} due, balance $${bills.coverage.balance}` : "");
+
   await call("DELETE", "/api/me");
   check(true, "Test user deleted (Plaid item removed)");
 }

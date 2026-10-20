@@ -8,11 +8,22 @@ import {
   type UserRow,
 } from "../db.js";
 import { openForUser, sealForUser } from "../keys.js";
+import type { BillsView } from "../bills.js";
 import type { LedgerLeak, LedgerReceipt } from "../ledger.js";
 import { log } from "../log.js";
 import { daysBetween, isoWeek, localNow } from "./time.js";
 
-export type AlertKind = "suspicious" | "renewal" | "fee" | "price_hike" | "new_leak" | "hunt" | "report";
+export type AlertKind =
+  | "suspicious"
+  | "renewal"
+  | "fee"
+  | "price_hike"
+  | "new_leak"
+  | "hunt"
+  | "report"
+  | "bill_due"
+  | "bill_late"
+  | "low_balance";
 
 export interface NotifySettings {
   push: boolean;
@@ -28,7 +39,18 @@ export const DEFAULT_SETTINGS: NotifySettings = {
   hideAmounts: true,
   quietStart: 21,
   quietEnd: 8,
-  kinds: { suspicious: true, renewal: true, fee: true, price_hike: true, new_leak: true, hunt: true, report: true },
+  kinds: {
+    suspicious: true,
+    renewal: true,
+    fee: true,
+    price_hike: true,
+    new_leak: true,
+    hunt: true,
+    report: true,
+    bill_due: true,
+    bill_late: true,
+    low_balance: true,
+  },
 };
 
 export function parseSettings(json: string | null | undefined): NotifySettings {
@@ -67,6 +89,8 @@ export interface CandidateContext {
   /** 0 = Monday. */
   weekday: number;
   huntRemaining: number;
+  /** Bill tracker state, when the user has one. Coverage is only known right after a scan (live balance). */
+  bills?: BillsView | null;
 }
 
 /** Everything worth telling the user right now, each with a stable idempotency key. */
@@ -141,6 +165,8 @@ export function buildCandidates(r: LedgerReceipt, ctx: CandidateContext): AlertC
     }
   }
 
+  if (ctx.bills) out.push(...billCandidates(ctx.bills));
+
   if (ctx.weekday === 0 && ctx.huntRemaining > 0) {
     const week = isoWeek(ctx.today);
     out.push({
@@ -173,6 +199,53 @@ export function buildCandidates(r: LedgerReceipt, ctx: CandidateContext): AlertC
   }
 
   return out.sort((a, b) => b.priority - a.priority);
+}
+
+const fmtDate = (d: string) => new Date(`${d}T00:00:00Z`).toLocaleDateString("en-CA", { month: "short", day: "numeric", timeZone: "UTC" });
+
+function billCandidates(v: BillsView): AlertCandidate[] {
+  const out: AlertCandidate[] = [];
+  const c = v.coverage;
+  if (c.status === "short" && c.cushion !== null) {
+    const by = c.payday ? `before payday on ${fmtDate(c.payday.date)}` : `in the next two weeks`;
+    out.push({
+      key: `short:${c.until}`,
+      kind: "low_balance",
+      security: false,
+      priority: 95,
+      leakId: null,
+      title: "Bills may bounce before payday",
+      body: `${money(c.due)} in bills is due ${by}. That's ${money(-c.cushion)} more than you have. Move money or ask to shift a due date to avoid an NSF fee.`,
+      privateBody: `Your bills due ${by} add up to more than your balance. Take a look.`,
+    });
+  }
+  // Subscriptions already get a renewal alert from the leak ledger.
+  for (const b of v.bills.filter((x) => !x.hidden && x.kind !== "subscription")) {
+    if (b.status === "late") {
+      out.push({
+        key: `late:${b.id}:${b.nextDate}`,
+        kind: "bill_late",
+        security: false,
+        priority: 85,
+        leakId: null,
+        title: `${b.name} hasn't come out yet`,
+        body: `It usually comes out around ${fmtDate(b.nextDate)} (${money(b.amount)}). Check it was paid so you don't get a late fee.`,
+        privateBody: `A bill that usually comes out by now hasn't. Check it was paid.`,
+      });
+    } else if (b.inDays >= 0 && b.inDays <= b.remindDays) {
+      out.push({
+        key: `bill:${b.id}:${b.nextDate}`,
+        kind: "bill_due",
+        security: false,
+        priority: 75,
+        leakId: null,
+        title: `${b.name} is due ${when(b.inDays)}`,
+        body: `About ${money(b.amount)} on ${fmtDate(b.nextDate)}.${b.change ? ` Last time it was ${money(b.change.to)}, up from ${money(b.change.from)}.` : ""}`,
+        privateBody: `A bill is due ${when(b.inDays)}.`,
+      });
+    }
+  }
+  return out;
 }
 
 const isQuiet = (hour: number, s: NotifySettings) =>
@@ -220,7 +293,7 @@ export const hashToken = (token: string) => createHash("sha256").update(token).d
 export async function deliverAlerts(
   user: UserRow,
   receipt: LedgerReceipt,
-  opts: { now: Date; huntRemaining: number; sender: PushSender },
+  opts: { now: Date; huntRemaining: number; sender: PushSender; bills?: BillsView | null },
 ): Promise<{ created: AlertCandidate[]; pushed: PushMessage[] }> {
   const settings = parseSettings(user.notify_settings);
   const local = localNow(opts.now, user.timezone);
@@ -228,9 +301,10 @@ export async function deliverAlerts(
   const nowIso = opts.now.toISOString().replace("T", " ").slice(0, 19);
   const weekAgo = new Date(opts.now.getTime() - 7 * 86_400_000).toISOString().replace("T", " ").slice(0, 19);
 
-  const candidates = buildCandidates(receipt, { today: local.date, weekday: local.weekday, huntRemaining: opts.huntRemaining })
+  const candidates = buildCandidates(receipt, { today: local.date, weekday: local.weekday, huntRemaining: opts.huntRemaining, bills: opts.bills })
     .filter((c) => settings.kinds[c.kind])
-    .filter((c) => c.security || !quiet);
+    // The before-payday check needs the live balance, so it can't wait for quiet hours to end: inbox now, no push.
+    .filter((c) => c.security || !quiet || c.kind === "low_balance");
 
   const created: AlertCandidate[] = [];
   for (const c of candidates) {
@@ -248,6 +322,7 @@ export async function deliverAlerts(
   let budget = WEEKLY_PUSH_CAP - countPushedSince(user.id, weekAgo, false);
   for (const c of created) {
     if (!c.security) {
+      if (quiet) continue;
       if (budget <= 0) continue;
       budget--;
     }

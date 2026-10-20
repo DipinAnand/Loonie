@@ -15,7 +15,9 @@ const { evaluateQuests } = await import("./quests.js");
 const { buildCandidates, deliverAlerts, hashToken } = await import("./notify.js");
 const { homeFor, notifyUser, alertInbox } = await import("./service.js");
 const { currentHunt } = await import("./hunt.js");
-const { getUser, upsertPushToken, setNotifySettings, setTimezone } = await import("../db.js");
+const { getUser, upsertPushToken, setBillPref, setNotifySettings, setTimezone } = await import("../db.js");
+const { billsView, readBills, saveBills } = await import("../bills.js");
+const { buildBillPlan } = await import("../engine/bills.js");
 const { sealForUser } = await import("../keys.js");
 const { applyScan, ensureUser, labelLeak, readReceipt } = await import("../ledger.js");
 const { buildLeakReceipt } = await import("../engine/receipt.js");
@@ -142,6 +144,39 @@ describe("alert candidates", () => {
   });
 });
 
+describe("bill alerts", () => {
+  const base = { lastScanAt: "2026-10-01 10:00:00", lastScanComplete: true, totalAnnualImpact: 0, savedPerYear: 0, transactionCount: 0, windowStart: null, leaks: [], suspicious: [], resolved: [], connections: [] };
+  const today = "2026-10-02"; // not the 1st: that day adds the monthly report
+  const txns = leakyScenario(today).map((t, i) => ({ id: `t${i}`, accountId: "a", date: t.date, amount: t.amount, name: t.description }));
+
+  it("warns before payday, flags a late bill, and reminds on the user's lead time", async () => {
+    const user = await ensureUser(randomUUID());
+    await saveBills(user, buildBillPlan(txns, today));
+    const plan = (await readBills(user))!;
+    const rent = plan.bills.find((b) => b.merchantKey.includes("rent"))!;
+    setBillPref(user.id, rent.id, { hidden: false, remindDays: 7 });
+
+    const view = billsView(plan, user, today, 500);
+    assert.equal(view.coverage.status, "short");
+    const c = buildCandidates(base, { today, weekday: 3, huntRemaining: 0, bills: view });
+    assert.deepEqual(c.map((x) => x.kind), ["low_balance", "bill_late", "bill_due"]);
+    assert.ok(c[0].body.includes(`$${view.coverage.due.toFixed(2)}`));
+    assert.match(c[1].title, /daycare/i);
+    assert.match(c[2].title, /rent/i);
+    assert.ok(c.every((x) => !x.privateBody.includes("$")), "lock screen never shows amounts");
+  });
+
+  it("stays quiet about hidden bills and without a known balance", async () => {
+    const user = await ensureUser(randomUUID());
+    const plan = buildBillPlan(txns, today);
+    await saveBills(user, plan);
+    const daycare = plan.bills.find((b) => b.merchantKey.includes("daycare"))!;
+    setBillPref(user.id, daycare.id, { hidden: true, remindDays: null });
+    const c = buildCandidates(base, { today, weekday: 3, huntRemaining: 0, bills: billsView(plan, user, today, null) });
+    assert.deepEqual(c, []);
+  });
+});
+
 describe("delivery", () => {
   async function userWithToken(settings = {}) {
     const id = randomUUID();
@@ -183,6 +218,16 @@ describe("delivery", () => {
     assert.equal(r.pushed.length, 1);
   });
 
+  it("keeps a before-payday warning from a night scan in the inbox without waking anyone", async () => {
+    const user = await userWithToken();
+    const today = "2026-10-08";
+    const txns = leakyScenario(today).map((t, i) => ({ id: `t${i}`, accountId: "a", date: t.date, amount: t.amount, name: t.description }));
+    const bills = billsView(buildBillPlan(txns, today), user, today, 100);
+    const r = await deliverAlerts(user, receiptWith([]), { now: night, huntRemaining: 0, sender, bills });
+    assert.deepEqual(r.created.map((c) => c.kind), ["low_balance"]);
+    assert.equal(r.pushed.length, 0);
+  });
+
   it("shows amounts only when the user opts in, and respects turned-off kinds", async () => {
     const user = await userWithToken({ hideAmounts: false, kinds: { renewal: false } });
     const sub = leak({ meta: { nextExpectedDate: "2026-10-09", lastAmount: 9.99 } });
@@ -220,6 +265,7 @@ describe("home, end to end on a seeded ledger", () => {
     assert.ok(home.celebrate.quests.includes("plug_subscription"));
     assert.ok(home.loonies >= 100, "quest reward counted");
     assert.equal(home.streaks.huntWeeks, 1);
+    assert.equal(home.bills, null, "no bill plan until a full scan saves one");
 
     // Celebrations fire once.
     const again = await homeFor(user);

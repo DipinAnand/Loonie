@@ -124,6 +124,22 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS alerts_user_time ON alerts(user_id, created_at);
 
+  -- Bill tracker: the latest detected bills and paydays (sealed; never balances).
+  CREATE TABLE IF NOT EXISTS bill_plans (
+    user_id     TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    payload_enc TEXT NOT NULL
+  );
+
+  -- The user's choices per bill. Bill ids are opaque hashes.
+  CREATE TABLE IF NOT EXISTS bill_prefs (
+    user_id     TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bill_id     TEXT NOT NULL,
+    hidden      INTEGER NOT NULL DEFAULT 0,
+    remind_days INTEGER,                         -- days before the due date; NULL = default
+    PRIMARY KEY (user_id, bill_id)
+  );
+
   -- De-identified, consented training rows. Deliberately no user_id and no
   -- foreign key: the only link back is subject_enc, destroyed with the user.
   CREATE TABLE IF NOT EXISTS training_labels (
@@ -416,4 +432,37 @@ export function markAlertsRead(userId: string, keys: string[] | "all", at: strin
   }
   const stmt = db.prepare("UPDATE alerts SET read_at = ? WHERE user_id = ? AND alert_key = ? AND read_at IS NULL");
   for (const k of keys) stmt.run(at, userId, k);
+}
+
+// ---- bills --------------------------------------------------------------------
+
+export function saveBillPlan(userId: string, payloadEnc: string): void {
+  db.prepare(
+    `INSERT INTO bill_plans (user_id, payload_enc) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET payload_enc = excluded.payload_enc, updated_at = datetime('now')`,
+  ).run(userId, payloadEnc);
+}
+
+export function getBillPlan(userId: string): { payload_enc: string; updated_at: string } | undefined {
+  return db.prepare("SELECT payload_enc, updated_at FROM bill_plans WHERE user_id = ?").get(userId) as
+    | { payload_enc: string; updated_at: string }
+    | undefined;
+}
+
+export interface BillPrefRow {
+  bill_id: string;
+  hidden: number;
+  remind_days: number | null;
+}
+
+export function billPrefsFor(userId: string): Map<string, BillPrefRow> {
+  const rows = db.prepare("SELECT bill_id, hidden, remind_days FROM bill_prefs WHERE user_id = ?").all(userId) as unknown as BillPrefRow[];
+  return new Map(rows.map((r) => [r.bill_id, r]));
+}
+
+export function setBillPref(userId: string, billId: string, pref: { hidden: boolean; remindDays: number | null }): void {
+  db.prepare(
+    `INSERT INTO bill_prefs (user_id, bill_id, hidden, remind_days) VALUES (?, ?, ?, ?)
+     ON CONFLICT(user_id, bill_id) DO UPDATE SET hidden = excluded.hidden, remind_days = excluded.remind_days`,
+  ).run(userId, billId, pref.hidden ? 1 : 0, pref.remindDays);
 }

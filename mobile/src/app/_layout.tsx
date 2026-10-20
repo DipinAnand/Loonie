@@ -24,6 +24,7 @@ export default function RootLayout() {
           <Stack.Screen name="connect" options={{ title: "Connect your bank" }} />
           <Stack.Screen name="receipt" options={{ title: "Your Leak Receipt", headerBackVisible: false }} />
           <Stack.Screen name="transactions" options={{ title: "Accounts & transactions" }} />
+          <Stack.Screen name="bills" options={{ title: "Bills" }} />
         </Stack>
       </PaperProvider>
     </SafeAreaProvider>

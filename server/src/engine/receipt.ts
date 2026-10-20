@@ -113,7 +113,7 @@ function subscriptionLeaks(recurring: RecurringSeries[]): Leak[] {
     }));
 }
 
-function isEssential(s: RecurringSeries): boolean {
+export function isEssential(s: Pick<RecurringSeries, "categoryPrimary" | "merchantKey">): boolean {
   return (s.categoryPrimary !== null && ESSENTIAL_PRIMARY.has(s.categoryPrimary)) || ESSENTIAL_PATTERN.test(s.merchantKey);
 }
 

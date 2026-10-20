@@ -1,9 +1,12 @@
 import { type AccountBase, type Transaction, TransactionsUpdateStatus } from "plaid";
+import { saveBills, spendableBalance } from "./bills.js";
 import { type ItemRow, type ItemStatus, itemsForUser, markItemScanned, scansForUser, setItemStatus } from "./db.js";
 import { localToday, notifyUser } from "./engagement/service.js";
 import { detectSuspicious } from "./engine/anomaly.js";
+import { buildBillPlan } from "./engine/bills.js";
 import { buildLeakReceipt } from "./engine/receipt.js";
 import type { Txn } from "./engine/types.js";
+import { toDay } from "./engine/util.js";
 import { openAccessToken } from "./keys.js";
 import { applyScan, ensureUser, readReceipt, type ScanSummary } from "./ledger.js";
 import { log } from "./log.js";
@@ -57,6 +60,7 @@ export async function fetchItem(item: ItemRow, opts: { waitForData?: boolean } =
   const accessToken = await openAccessToken(item.access_token_enc, item.item_id);
   const deadline = Date.now() + (opts.waitForData ? 30_000 : 5_000);
   let lastCount = -1;
+  let sameReads = 0;
 
   for (;;) {
     const txns = new Map<string, Txn>();
@@ -95,9 +99,12 @@ export async function fetchItem(item: ItemRow, opts: { waitForData?: boolean } =
     }
 
     // Right after linking Plaid may still be pulling history, and Sandbox can
-    // hand it over in parts: wait until two reads in a row agree.
-    const settling = !!opts.waitForData && txns.size !== lastCount;
+    // hand it over in parts (the last month first, the rest seconds later):
+    // wait until the history reaches past two months or three reads agree.
+    sameReads = txns.size === lastCount ? sameReads + 1 : 0;
     lastCount = txns.size;
+    const oldest = Math.min(...[...txns.values()].map((t) => toDay(t.date)));
+    const settling = !!opts.waitForData && sameReads < 2 && toDay(new Date().toISOString().slice(0, 10)) - oldest < 60;
     if ((restart || notReady || settling) && Date.now() < deadline) {
       await sleep(2000);
       continue;
@@ -171,11 +178,35 @@ export function runScan(userId: string, opts: { waitForData?: boolean } = {}): P
 
     const summary = await applyScan(user, receipt, txns, { today, complete });
     for (const id of scannedItemIds) markItemScanned(id);
+    // A partial scan would drop the bills of the connection that failed: keep the last plan.
+    if (complete) await saveBills(user, buildBillPlan(txns, today));
     // Alerts come from the updated ledger; a push failure never fails the scan.
-    await notifyUser((await ensureUser(userId))).catch((err) => log.warn("notify after scan failed", { err }));
+    // The balance only lives for this call: it decides the "bills before payday" alert.
+    const balance = spendableBalance(data.flatMap((d) => d.accounts));
+    await notifyUser(await ensureUser(userId), new Date(), undefined, { balance }).catch((err) =>
+      log.warn("notify after scan failed", { err }),
+    );
     return summary;
   })().finally(() => running.delete(userId));
 
   running.set(userId, job);
   return job;
+}
+
+/**
+ * Live spendable balance across the user's connections, for the bill tracker.
+ * Uses Plaid's cached balances (no extra product); nothing is stored.
+ */
+export async function fetchBalance(userId: string): Promise<number | null> {
+  const accounts: AccountBase[] = [];
+  for (const item of itemsForUser(userId)) {
+    if (item.status !== "healthy") continue;
+    try {
+      const { data } = await plaid.accountsGet({ access_token: await openAccessToken(item.access_token_enc, item.item_id) });
+      accounts.push(...data.accounts);
+    } catch (err) {
+      log.warn("balance fetch failed", { itemId: item.item_id, code: plaidError(err)?.body.error_code ?? "unknown" });
+    }
+  }
+  return spendableBalance(accounts);
 }

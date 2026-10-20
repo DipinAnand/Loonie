@@ -1,3 +1,4 @@
+import { billsView, readBills } from "../bills.js";
 import { alertsFor, completedQuests, completeQuest, scansForUser, unlockBadge, unlockedBadges, type UserRow } from "../db.js";
 import { openForUser } from "../keys.js";
 import { type LedgerReceipt, readReceipt, type ScanSummary } from "../ledger.js";
@@ -54,6 +55,18 @@ export async function homeFor(user: UserRow, now = new Date()) {
     .filter((u) => u.inDays >= 0 && u.inDays <= 14)
     .sort((a, b) => a.inDays - b.inDays);
 
+  const plan = await readBills(user);
+  const billView = plan ? billsView(plan, user, today, null) : null;
+  const bills = billView && {
+    monthlyTotal: billView.monthlyTotal,
+    late: billView.bills.filter((b) => !b.hidden && b.status === "late").length,
+    next: billView.bills
+      .filter((b) => !b.hidden && b.kind !== "subscription" && b.inDays >= 0)
+      .slice(0, 3)
+      .map((b) => ({ billId: b.id, name: b.name, amount: b.amount, date: b.nextDate, inDays: b.inDays })),
+    payday: billView.coverage.payday,
+  };
+
   const scoreHistory = await scoreTrend(user);
   const unread = alertsFor(user.id, 100).filter((a) => !a.read_at).length;
 
@@ -68,6 +81,7 @@ export async function homeFor(user: UserRow, now = new Date()) {
     streaks: { ...streaks, huntWeeks: hunt.streak },
     hunt: { week: hunt.week, total: hunt.total, remaining: hunt.remaining, completed: hunt.completed },
     upcoming,
+    bills,
     suspicious: receipt.suspicious.filter((s) => s.verdict === null).length,
     unreadAlerts: unread,
     quests: quests.filter((q) => q.status === "available").slice(0, 3),
@@ -138,11 +152,18 @@ export async function monthlyReport(user: UserRow, month: string) {
 }
 
 /** Builds alerts from the ledger (no Plaid call) and pushes what the rules allow. */
-export async function notifyUser(user: UserRow, now = new Date(), sender: PushSender = expoPushSender) {
+export async function notifyUser(
+  user: UserRow,
+  now = new Date(),
+  sender: PushSender = expoPushSender,
+  opts: { balance?: number | null } = {},
+) {
   const today = localToday(user, now);
   const receipt = await readReceipt(user);
   const hunt = await currentHunt(user, today);
-  return deliverAlerts(user, receipt, { now, huntRemaining: hunt.remaining, sender });
+  const plan = await readBills(user);
+  const bills = plan ? billsView(plan, user, today, opts.balance ?? null) : null;
+  return deliverAlerts(user, receipt, { now, huntRemaining: hunt.remaining, sender, bills });
 }
 
 export async function alertInbox(user: UserRow) {

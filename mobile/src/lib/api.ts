@@ -5,6 +5,7 @@ import type {
   Account,
   Alert,
   Badge,
+  Bills,
   Home,
   Hunt,
   LabelResult,
@@ -73,6 +74,10 @@ export const api = {
   receipt: () => request<LeakReceipt>("/api/receipt"),
   label: (leakId: string, verdict: Verdict) => post<LabelResult>("/api/labels", { leakId, verdict }),
   home: () => request<Home>("/api/home"),
+  /** `live: false` skips the bank balance check (faster, no Plaid call). */
+  bills: (live = true) => request<Bills | { ready: false }>(`/api/bills${live ? "" : "?balance=0"}`),
+  updateBill: (id: string, patch: { hidden?: boolean; remindDays?: number | null }) =>
+    request<{ ok: true }>(`/api/bills/${encodeURIComponent(id)}`, { method: "PUT", body: JSON.stringify(patch) }),
   hunt: () => request<Hunt>("/api/hunt"),
   quests: () => request<{ quests: Quest[]; newlyCompleted: string[]; questLoonies: number }>("/api/quests"),
   completeQuest: (id: string) => post<{ ok: true }>(`/api/quests/${encodeURIComponent(id)}/complete`),

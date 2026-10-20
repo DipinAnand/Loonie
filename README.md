@@ -114,10 +114,12 @@ institutions once Canada is enabled on your Plaid account.
    - Scroll the leaks: GoodLife, Crave, bank fees, Netflix, the Spotify price hike, the double charge.
 5. The suspicious **$1.00 at QWKMART** card at the top → **Not me**. Show the four steps.
 6. Mark a few leaks: **Don't need it** on GoodLife, **Keep it** on iCloud. The total updates.
-7. Tap the list icon (top right) → live accounts and transactions ("not stored by Looni").
-8. Back → scroll down → **Disconnect & delete my data**. This doubles as the privacy story.
+7. Tap the calendar icon (top right) → **Bills**. Show "Bills may bounce" ($455.59 short before payday), the late
+   daycare payment, the hydro spike, and the ⋮ menu (remind me 1/3/7 days before).
+8. Back → tap the list icon → live accounts and transactions ("not stored by Looni").
+9. Back → scroll down → **Disconnect & delete my data**. This doubles as the privacy story.
 
-**Reset between takes:** step 8 wipes everything, so each take starts from the welcome screen.
+**Reset between takes:** step 9 wipes everything, so each take starts from the welcome screen.
 
 Home (Leak Score, Coming up), the Leak Hunt, Quests and the Alerts inbox already work on the server. They show up in
 the app once the screens are built from the Stitch mocks; record the final video after that.
@@ -129,6 +131,7 @@ the app once the screens are built from the Stitch mocks; record the final video
 | `fees.ts` | English and French descriptor regexes plus Plaid `personal_finance_category` → NSF, overdraft, monthly account, FX, ATM, transaction, interest, late and annual fees |
 | `recurring.ts` | Normalizes merchants (strips PAD/POS/SQ*, store numbers, reference codes), then detects weekly-to-annual cadence, amount stability, active/inactive status and price steps |
 | `receipt.ts` | Builds leaks (fee, subscription, price_hike, duplicate) with stable ids, a yearly cost and a feature snapshot. Totals skip dismissed leaks and never double count a price hike |
+| `bills.ts` | Bill tracker: every active bill (rent, utilities, insurance, card and loan payments, subscriptions) with its next date, paydays from recurring income, late bills, unusual amounts, and whether the balance covers the bills due before the next payday |
 | `scenario.ts` | Deterministic leaky test account, shared by the tests and the sandbox quick-link |
 | `training.ts` | Turns a labeled leak into a de-identified training row (amount ranges, no person-like descriptors) |
 
@@ -157,7 +160,8 @@ Everything is computed from the encrypted ledger. No transactions needed.
   it. "Not me" returns the steps to take.
 - **Alerts and push:**
   - Kinds: renewals (0–2 days ahead), new fees, price hikes, new leaks, suspicious charges, Monday hunt, monthly
-    report.
+    report, bills due (3 days ahead by default, per bill), late bills, and "bills may bounce before payday" (checked
+    right after each scan, while the balance is in memory).
   - Each alert is created once and goes to the inbox.
   - At most 2 non-security pushes per 7 days. Quiet hours in the user's time zone.
   - Security alerts always push.
@@ -188,6 +192,8 @@ holds the design tokens (placeholders until the mocks land).
 | DELETE | `/api/me` | Removes the Plaid items and deletes the user. Their key is destroyed |
 | POST | `/webhooks/plaid` | Plaid webhooks (signature verified): rescans and connection status |
 | GET | `/api/home` | Leak Score (+ how to raise it), saved per year / to date, loonies, level, streaks, upcoming renewals, hunt state, celebrations |
+| GET | `/api/bills` | Bills, paydays and the before-payday check. The balance is read **live from Plaid, not stored** (`?balance=0` skips it) |
+| PUT | `/api/bills/:id` | `{ hidden?, remindDays? }`: hide something that isn't a bill, or change the reminder lead time (0–14 days) |
 | GET | `/api/hunt` | This week's Leak Hunt (3 cards) and the hunt streak |
 | GET | `/api/quests` · POST `/api/quests/:id/complete` | Quests; auto ones complete from the ledger, self-reported ones via POST |
 | GET | `/api/badges` · POST `/api/badges/seen` | Achievements |
