@@ -56,6 +56,7 @@ export interface ItemData {
 export async function fetchItem(item: ItemRow, opts: { waitForData?: boolean } = {}): Promise<ItemData> {
   const accessToken = await openAccessToken(item.access_token_enc, item.item_id);
   const deadline = Date.now() + (opts.waitForData ? 30_000 : 5_000);
+  let lastCount = -1;
 
   for (;;) {
     const txns = new Map<string, Txn>();
@@ -84,13 +85,20 @@ export async function fetchItem(item: ItemRow, opts: { waitForData?: boolean } =
       accounts = data.accounts;
       for (const t of [...data.added, ...data.modified]) txns.set(t.transaction_id, toTxn(t));
       for (const r of data.removed) if (r.transaction_id) txns.delete(r.transaction_id);
-      notReady = data.transactions_update_status === TransactionsUpdateStatus.NotReady && txns.size === 0;
+      // Right after linking, Sandbox can report an update complete before the
+      // transactions show up, so an empty first read is treated as not ready.
+      notReady =
+        txns.size === 0 &&
+        (data.transactions_update_status === TransactionsUpdateStatus.NotReady || !!opts.waitForData);
       if (notReady || !data.has_more) break;
       cursor = data.next_cursor;
     }
 
-    // Right after linking Plaid may still be pulling history.
-    if ((restart || notReady) && Date.now() < deadline) {
+    // Right after linking Plaid may still be pulling history, and Sandbox can
+    // hand it over in parts: wait until two reads in a row agree.
+    const settling = !!opts.waitForData && txns.size !== lastCount;
+    lastCount = txns.size;
+    if ((restart || notReady || settling) && Date.now() < deadline) {
       await sleep(2000);
       continue;
     }

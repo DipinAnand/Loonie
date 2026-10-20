@@ -25,7 +25,7 @@ export function leakyScenario(asOf: string, months = 6): ScenarioTxn[] {
   };
 
   monthly(3, () => ({ date: "", amount: 16.49, description: "NETFLIX.COM 866-579-7172 ON" }));
-  monthly(8, (m) => ({ date: "", amount: m < 2 ? 12.99 : 10.99, description: "SPOTIFY P1A2B3C4D5" }));
+  monthly(8, (m) => ({ date: "", amount: m < 1 ? 12.99 : 10.99, description: "SPOTIFY P1A2B3C4D5" }));
   monthly(12, () => ({ date: "", amount: 64.99, description: "PAD GOODLIFE FITNESS #4471" }));
   monthly(15, () => ({ date: "", amount: 4.99, description: "APPLE.COM/BILL ICLOUD" }));
   monthly(1, () => ({ date: "", amount: 16.95, description: "FRAIS MENSUELS / MONTHLY FEE" }));
