@@ -14,6 +14,12 @@ export function perYear(cadence: Cadence): number {
   return CADENCES.find((c) => c.cadence === cadence)!.perYear;
 }
 
+/** Interval in whole days and how many days early/late a charge can land. */
+export function cadenceSpacing(cadence: Cadence): { days: number; tolerance: number } {
+  const c = CADENCES.find((x) => x.cadence === cadence)!;
+  return { days: Math.round(c.days), tolerance: c.tolerance };
+}
+
 /** Categories that are recurring but are never "leaks" (money moving between your own accounts, income, debt principal). */
 const NON_SPEND_PRIMARY = new Set(["INCOME", "TRANSFER_IN", "TRANSFER_OUT", "LOAN_PAYMENTS", "BANK_FEES"]);
 
@@ -22,12 +28,18 @@ const NON_SPEND_PRIMARY = new Set(["INCOME", "TRANSFER_IN", "TRANSFER_OUT", "LOA
  * gaps between charges fit one cadence and the amounts are stable enough to be
  * the same bill (subscriptions drift; groceries don't repeat on a schedule).
  */
-export function detectRecurring(txns: Txn[], asOf: string, opts: { includeNonSpend?: boolean } = {}): RecurringSeries[] {
+export function detectRecurring(
+  txns: Txn[],
+  asOf: string,
+  opts: { includeNonSpend?: boolean; includeLoanPayments?: boolean } = {},
+): RecurringSeries[] {
   const groups = new Map<string, Txn[]>();
   for (const t of txns) {
     if (t.amount <= 0 || t.pending) continue;
     // The switch kit needs payroll, transfers and loan payments too; the leak rules don't.
-    if (!opts.includeNonSpend && t.categoryPrimary && NON_SPEND_PRIMARY.has(t.categoryPrimary)) continue;
+    // Loan and card payments are bills, but never leaks: only the bill tracker asks for them.
+    const loan = opts.includeLoanPayments && t.categoryPrimary === "LOAN_PAYMENTS";
+    if (!opts.includeNonSpend && t.categoryPrimary && NON_SPEND_PRIMARY.has(t.categoryPrimary) && !loan) continue;
     if (classifyFee(t)) continue; // fees get their own rule
     const key = merchantKey(t.name, t.merchantName);
     const list = groups.get(key) ?? [];
@@ -39,6 +51,29 @@ export function detectRecurring(txns: Txn[], asOf: string, opts: { includeNonSpe
   for (const [key, list] of groups) {
     const s = analyzeGroup(key, list, asOf);
     if (s) series.push(s);
+  }
+  return series.sort((a, b) => b.annualCost - a.annualCost);
+}
+
+const INCOME_PATTERN = /\b(payroll|pay ?roll|salary|salaire|paie|direct dep(osit)?|dep[oô]t direct|pension|cpp|oas|ei benefits?)\b/i;
+
+/**
+ * Finds regular paycheques (or pensions, benefits): inflows that repeat on a
+ * schedule. Uses the same cadence and amount checks as bills, on the money in.
+ */
+export function detectIncome(txns: Txn[], asOf: string): RecurringSeries[] {
+  const groups = new Map<string, Txn[]>();
+  for (const t of txns) {
+    if (t.amount >= 0 || t.pending) continue;
+    const income = t.categoryPrimary === "INCOME" || (!t.categoryPrimary && INCOME_PATTERN.test(`${t.name} ${t.merchantName ?? ""}`));
+    if (!income) continue;
+    const key = merchantKey(t.name, t.merchantName);
+    groups.set(key, [...(groups.get(key) ?? []), { ...t, amount: -t.amount }]);
+  }
+  const series: RecurringSeries[] = [];
+  for (const [key, list] of groups) {
+    const s = analyzeGroup(key, list, asOf);
+    if (s?.active) series.push(s);
   }
   return series.sort((a, b) => b.annualCost - a.annualCost);
 }

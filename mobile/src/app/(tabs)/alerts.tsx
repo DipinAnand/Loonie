@@ -15,6 +15,9 @@ const KIND_TONE: Record<Alert["kind"], Tone> = {
   mortgage: "yellow",
   hunt: "lavender",
   report: "green",
+  bill_due: "yellow",
+  bill_late: "leak",
+  low_balance: "leak",
 };
 const KIND_MARK: Record<Alert["kind"], string> = {
   suspicious: "!",
@@ -25,6 +28,9 @@ const KIND_MARK: Record<Alert["kind"], string> = {
   mortgage: "⌂",
   hunt: "✓",
   report: "≡",
+  bill_due: "⏱",
+  bill_late: "!",
+  low_balance: "↓",
 };
 
 type Filter = "all" | "money" | "security";
@@ -50,6 +56,7 @@ export default function Alerts() {
     if (a.leakId) router.push({ pathname: "/leak/[id]", params: { id: a.leakId } });
     else if (a.kind === "mortgage") router.push("/move");
     else if (a.kind === "hunt") router.push("/loon");
+    else if (a.kind === "bill_due" || a.kind === "bill_late" || a.kind === "low_balance") router.push("/bills");
   }
 
   const shown = (alerts ?? []).filter((a) => filter === "all" || (filter === "security" ? a.security : !a.security));

@@ -176,6 +176,9 @@ export default function HomeScreen() {
         </Panel>
 
         <View style={styles.links}>
+          <Button icon="calendar-clock" mode="outlined" onPress={() => router.push("/bills")}>
+            Bills
+          </Button>
           <Button icon="calculator-variant-outline" mode="outlined" onPress={() => router.push("/tools")}>
             Calculators
           </Button>

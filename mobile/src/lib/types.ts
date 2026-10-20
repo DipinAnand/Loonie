@@ -146,12 +146,55 @@ export interface Home {
   streaks: { feeFreeDays: number | null; nsfFreeMonths: number | null; huntWeeks: number };
   hunt: { week: string; total: number; remaining: number; completed: boolean };
   upcoming: { leakId: string; title: string; amount: number | null; date: string; inDays: number }[];
+  bills: {
+    monthlyTotal: number;
+    late: number;
+    next: { billId: string; name: string; amount: number; date: string; inDays: number }[];
+    payday: { date: string; amount: number } | null;
+  } | null;
   suspicious: number;
   unreadAlerts: number;
   quests: Quest[];
   celebrate: { quests: string[]; badges: Badge[] };
   connections: Connection[];
   lastScanAt: string | null;
+}
+
+export type Cadence = "weekly" | "biweekly" | "monthly" | "quarterly" | "annual";
+
+export interface Bill {
+  id: string;
+  name: string;
+  kind: "bill" | "subscription" | "debt";
+  cadence: Cadence;
+  amount: number;
+  typicalAmount: number;
+  nextDate: string;
+  lastPaid: { date: string; amount: number };
+  change: { from: number; to: number } | null;
+  status: "late" | "due_soon" | "upcoming";
+  inDays: number;
+  lateDays: number;
+  hidden: boolean;
+  remindDays: number;
+}
+
+export interface Bills {
+  ready: true;
+  asOf: string;
+  today: string;
+  bills: Bill[];
+  paydays: { name: string; cadence: Cadence; amount: number; nextDate: string; lastDate: string }[];
+  coverage: {
+    status: "ok" | "tight" | "short" | "unknown";
+    until: string;
+    payday: { date: string; amount: number } | null;
+    due: number;
+    dueBills: { id: string; name: string; date: string; amount: number }[];
+    balance: number | null;
+    cushion: number | null;
+  };
+  monthlyTotal: number;
 }
 
 export interface Hunt {
@@ -165,7 +208,7 @@ export interface Hunt {
 
 export interface Alert {
   key: string;
-  kind: "suspicious" | "renewal" | "mortgage" | "fee" | "price_hike" | "new_leak" | "hunt" | "report";
+  kind: "suspicious" | "renewal" | "mortgage" | "fee" | "price_hike" | "new_leak" | "hunt" | "report" | "bill_due" | "bill_late" | "low_balance";
   security: boolean;
   createdAt: string;
   read: boolean;

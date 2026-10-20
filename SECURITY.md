@@ -19,6 +19,8 @@ and savings history, and the app asks them to reconnect.
 | Institution name | Yes | `items.institution_enc`: user's own key | User disconnects |
 | Leak findings (title, merchant, amounts, that leak's own charge dates) | Yes | `leaks.payload_enc`: user's own key | User disconnects (crypto-shredded) |
 | Leak status, kind, first/last seen, verdict | Yes, plaintext | `leaks` | User disconnects |
+| Bills and paydays (name, amount, cadence, last and next date) | Yes | `bill_plans.payload_enc`: user's own key. No balances: "can I cover it" reads the balance live and only returns it | User disconnects (crypto-shredded) |
+| Bill settings (hidden, reminder days) | Yes, plaintext | `bill_prefs`: opaque bill ids only | User disconnects |
 | Scan summaries (total, counts, Leak Score) | Yes | `scans.summary_enc`: user's own key | User disconnects |
 | Alert inbox (title, body, leak id) | Yes | `alerts.payload_enc`: user's own key | User disconnects |
 | Switch kit (recurring payments and deposits: display name, cadence, amount, next date) | Yes | `user_state.switch_kit_enc`: user's own key | User disconnects (crypto-shredded) |

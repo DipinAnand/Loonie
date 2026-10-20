@@ -5,10 +5,10 @@ import { ActivityIndicator, Banner, Button, Card, IconButton, List, Snackbar, Te
 import { LeakCard } from "../../components/LeakCard";
 import { gradeTone, Overline, Panel, Pill, tones } from "../../components/ui";
 import { api } from "../../lib/api";
-import { money } from "../../lib/format";
+import { inDaysLabel, money } from "../../lib/format";
 import { openPlaidLink } from "../../lib/plaidLink";
 import { enablePush } from "../../lib/push";
-import type { Connection, LeakReceipt, Verdict } from "../../lib/types";
+import type { Bills, Connection, LeakReceipt, Verdict } from "../../lib/types";
 import { resetUserId } from "../../lib/user";
 
 const stoppedLabel = (n: number) => (n === 1 ? "1 leak you flagged has stopped" : `${n} leaks you flagged have stopped`);
@@ -19,10 +19,14 @@ export default function Receipt() {
   const [receipt, setReceipt] = useState<LeakReceipt | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bills, setBills] = useState<Bills | null>(null);
 
   const load = useCallback(async () => {
     try {
       setReceipt(await api.receipt());
+      // Teaser only: skip the live balance check here, the Bills screen does it.
+      const b = await api.bills(false).catch(() => null);
+      setBills(b?.ready ? b : null);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -36,7 +40,14 @@ export default function Receipt() {
   );
 
   useLayoutEffect(() => {
-    navigation.setOptions({ headerRight: () => <IconButton icon="format-list-bulleted" accessibilityLabel="Accounts and transactions" onPress={() => router.push("/transactions")} /> });
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={{ flexDirection: "row" }}>
+          <IconButton icon="calendar-clock" accessibilityLabel="Bills" onPress={() => router.push("/bills")} />
+          <IconButton icon="format-list-bulleted" accessibilityLabel="Accounts and transactions" onPress={() => router.push("/transactions")} />
+        </View>
+      ),
+    });
   }, [navigation]);
 
   // Ask for notifications only after the user has seen their leaks (never at first launch).
@@ -183,6 +194,8 @@ export default function Receipt() {
               </Panel>
             )}
 
+            {bills && <BillsTeaser bills={bills} />}
+
             {receipt.savedPerYear > 0 && (
               <Card mode="contained" style={{ backgroundColor: theme.colors.tertiaryContainer }}>
                 <Card.Title
@@ -244,6 +257,25 @@ export default function Receipt() {
         {error}
       </Snackbar>
     </>
+  );
+}
+
+function BillsTeaser({ bills }: { bills: Bills }) {
+  const theme = useTheme();
+  const shown = bills.bills.filter((b) => !b.hidden);
+  const late = shown.filter((b) => b.status === "late").length;
+  const next = shown.find((b) => b.status !== "late" && b.inDays >= 0);
+  return (
+    <Card mode="outlined" onPress={() => router.push("/bills")}>
+      <Card.Title
+        title={late ? `${late} bill${late === 1 ? "" : "s"} running late` : next ? `${next.name} ${inDaysLabel(next.inDays)}` : "Your bills"}
+        titleStyle={{ fontWeight: "700", color: late ? theme.colors.error : theme.colors.onSurface }}
+        subtitleNumberOfLines={2}
+        subtitle={`${shown.length} bills · about ${money(bills.monthlyTotal)}/month${bills.coverage.payday ? ` · payday ${inDaysLabel(Math.round((Date.parse(bills.coverage.payday.date) - Date.parse(bills.today)) / 86_400_000))}` : ""}`}
+        left={(p) => <List.Icon {...p} icon="calendar-clock" color={late ? theme.colors.error : theme.colors.primary} />}
+        right={(p) => <List.Icon {...p} icon="chevron-right" />}
+      />
+    </Card>
   );
 }
 

@@ -25,7 +25,7 @@ export function leakyScenario(asOf: string, months = 6): ScenarioTxn[] {
   };
 
   monthly(3, () => ({ date: "", amount: 16.49, description: "NETFLIX.COM 866-579-7172 ON" }));
-  monthly(8, (m) => ({ date: "", amount: m < 2 ? 12.99 : 10.99, description: "SPOTIFY P1A2B3C4D5" }));
+  monthly(8, (m) => ({ date: "", amount: m < 1 ? 12.99 : 10.99, description: "SPOTIFY P1A2B3C4D5" }));
   monthly(12, () => ({ date: "", amount: 64.99, description: "PAD GOODLIFE FITNESS #4471" }));
   monthly(15, () => ({ date: "", amount: 4.99, description: "APPLE.COM/BILL ICLOUD" }));
   monthly(1, () => ({ date: "", amount: 16.95, description: "FRAIS MENSUELS / MONTHLY FEE" }));
@@ -33,6 +33,14 @@ export function leakyScenario(asOf: string, months = 6): ScenarioTxn[] {
   monthly(25, () => ({ date: "", amount: 1850, description: "RENT PAYMENT PROPERTY MGMT" }));
   // Renews tomorrow: shows the renewal reminder and the "Coming up" row.
   monthly(29, () => ({ date: "", amount: 22.99, description: "CRAVE" }));
+
+  // Bills (essential, so never leaks) for the bill tracker:
+  // hydro moves around and just spiked; insurance is steady.
+  const hydro = [95.1, 97.3, 88.75, 101.2, 92.4, 142.6];
+  monthly(23, (m) => ({ date: "", amount: hydro[months - 1 - m] ?? 95, description: "TORONTO HYDRO ELECTRIC" }));
+  monthly(17, () => ({ date: "", amount: 118.5, description: "INTACT INSURANCE PAD" }));
+  // Daycare every two weeks, and this one is 3 days overdue: the "check it was paid" alert.
+  for (let d = 17; d < months * 30; d += 14) out.push({ date: addDays(asOf, -d), amount: 420, description: "LITTLE SPROUTS DAYCARE" });
 
   // Payroll every two weeks (inflow -> ignored by leak rules).
   for (let d = 2; d < months * 30; d += 14) out.push({ date: addDays(asOf, -d), amount: -2150, description: "PAYROLL DEPOSIT ACME CORP" });
@@ -58,7 +66,7 @@ export function leakyScenarioSandboxConfig(asOf: string) {
       {
         type: "depository",
         subtype: "checking",
-        starting_balance: 4200,
+        starting_balance: 2400,
         meta: { name: "Looni Leaky Chequing", mask: "4242" },
         transactions: leakyScenario(asOf).map((t) => ({
           date_transacted: t.date,

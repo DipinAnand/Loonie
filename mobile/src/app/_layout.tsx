@@ -30,6 +30,7 @@ export default function RootLayout() {
           <Stack.Screen name="tools" options={{ title: "Calculators" }} />
           <Stack.Screen name="track/[id]" options={{ title: "Your track" }} />
           <Stack.Screen name="transactions" options={{ title: "Accounts & transactions" }} />
+          <Stack.Screen name="bills" options={{ title: "Bills" }} />
         </Stack>
       </PaperProvider>
     </SafeAreaProvider>

@@ -4,8 +4,10 @@ import { rateLimit } from "express-rate-limit";
 import helmet from "helmet";
 import { Products } from "plaid";
 import { assertConfig, config } from "./config.js";
+import { billsView, readBills } from "./bills.js";
 import {
   allUserIds,
+  billPrefsFor,
   deletePushToken,
   deleteUserRow,
   getItem,
@@ -15,6 +17,7 @@ import {
   markAlertsRead,
   markBadgesSeen,
   setConsent,
+  setBillPref,
   setNotifySettings,
   setTimezone,
   upsertPushToken,
@@ -54,7 +57,7 @@ import { forgetDek, openAccessToken, sealAccessToken, sealForUser } from "./keys
 import { ensureUser, labelLeak, readReceipt, sealInstitution } from "./ledger.js";
 import { log } from "./log.js";
 import { plaid, plaidError } from "./plaid.js";
-import { analyzeAndStore, fetchAccounts, fetchAllForUser, runScan } from "./scan.js";
+import { analyzeAndStore, fetchAccounts, fetchAllForUser, fetchBalance, runScan } from "./scan.js";
 import { readRenewal, readSwitchKit, saveRenewal } from "./state.js";
 import { mergeStatements, parseStatement, StatementError, type StatementFile } from "./statement/csv.js";
 import { CALCULATORS } from "./tools/calc.js";
@@ -275,6 +278,47 @@ app.post("/api/labels", async (req, res) => {
   });
 });
 
+// ---- bills --------------------------------------------------------------------
+
+/**
+ * Bill tracker: bills and paydays from the last scan, plus whether today's
+ * balance covers what's due before payday. The balance is read live and only
+ * returned, never stored.
+ */
+app.get("/api/bills", async (req, res) => {
+  const user = userOf(req);
+  const plan = await readBills(user);
+  if (!plan) {
+    res.json({ ready: false });
+    return;
+  }
+  const balance = req.query.balance === "0" ? null : await fetchBalance(user.id);
+  res.json({ ready: true, ...billsView(plan, user, localToday(user), balance) });
+});
+
+/** Per-bill choices: hide something that isn't a bill, or change how early to be reminded. */
+app.put("/api/bills/:id", async (req, res) => {
+  const user = userOf(req);
+  const id = String(req.params.id);
+  const plan = await readBills(user);
+  if (!plan?.bills.some((b) => b.id === id)) {
+    res.status(404).json({ error: "Unknown bill" });
+    return;
+  }
+  const current = billPrefsFor(user.id).get(id);
+  const body = req.body ?? {};
+  const remind = body.remindDays;
+  if (remind !== undefined && remind !== null && !(Number.isInteger(remind) && remind >= 0 && remind <= 14)) {
+    res.status(400).json({ error: "remindDays must be a whole number from 0 to 14" });
+    return;
+  }
+  setBillPref(user.id, id, {
+    hidden: typeof body.hidden === "boolean" ? body.hidden : current?.hidden === 1,
+    remindDays: remind === undefined ? (current?.remind_days ?? null) : remind,
+  });
+  res.json({ ok: true });
+});
+
 // ---- engagement ---------------------------------------------------------------
 
 app.get("/api/home", async (req, res) => {
@@ -424,7 +468,8 @@ app.post("/api/statements", async (req, res) => {
 
   if (req.body?.save === true) {
     // A statement is a snapshot, not a live feed: never resolve leaks because a file didn't show them.
-    const summary = await analyzeAndStore(userOf(req).id, txns, { complete: false });
+    // Bills come from a statement only when no bank is connected (a bank's live feed is fresher).
+    const summary = await analyzeAndStore(userOf(req).id, txns, { complete: false, saveBills: itemsForUser(userOf(req).id).length === 0 });
     res.json({ saved: true, statements, summary, receipt: await readReceipt(await ensureUser(userOf(req).id)) });
     return;
   }
