@@ -92,7 +92,7 @@ export default function BillsScreen() {
             <Menu
               visible={menuFor === b.id}
               onDismiss={() => setMenuFor(null)}
-              anchor={<IconButton icon="dots-vertical" size={20} onPress={() => setMenuFor(b.id)} />}
+              anchor={<IconButton icon="dots-vertical" size={20} accessibilityLabel={`Options for ${b.name}`} onPress={() => setMenuFor(b.id)} />}
             >
               {REMIND_CHOICES.map((d) => (
                 <Menu.Item

@@ -121,6 +121,16 @@ institutions once Canada is enabled on your Plaid account.
 
 **Reset between takes:** step 9 wipes everything, so each take starts from the welcome screen.
 
+**Or record it automatically.** `scripts/record-demo.mjs` drives the web build through the same story at phone size,
+with captions and title cards, and writes a 2× MP4 (about 90 seconds). It needs the server running, Playwright and
+ffmpeg:
+
+```bash
+cd mobile && EXPO_PUBLIC_API_URL=http://localhost:4000 npx expo export -p web --output-dir dist
+npx serve -s dist -l 8090            # any static server with a single-page fallback
+cd .. && node scripts/record-demo.mjs demo-out   # → demo-out/looni-demo.mp4
+```
+
 Home (Leak Score, Coming up), the Leak Hunt, Quests and the Alerts inbox already work on the server. They show up in
 the app once the screens are built from the Stitch mocks; record the final video after that.
 
