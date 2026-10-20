@@ -50,6 +50,8 @@ export interface LeakMeta {
   /** For suspicious charges: which rule fired. */
   rule?: string;
   date?: string;
+  /** For price rises: the old price. */
+  previousAmount?: number;
   /** "high" when a fee line or a strict pattern proves it; "medium" when the user should check. */
   confidence?: Confidence;
   /** Rules-engine version that produced the finding, e.g. "1.3". */

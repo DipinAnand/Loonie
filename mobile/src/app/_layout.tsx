@@ -22,7 +22,13 @@ export default function RootLayout() {
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="consent" options={{ title: "Your data, your call" }} />
           <Stack.Screen name="connect" options={{ title: "Connect your bank" }} />
-          <Stack.Screen name="receipt" options={{ title: "Your Leak Receipt", headerBackVisible: false }} />
+          <Stack.Screen name="import" options={{ title: "Scan a statement" }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="leak/[id]" options={{ title: "Evidence" }} />
+          <Stack.Screen name="forecast" options={{ title: "Next 30 days" }} />
+          <Stack.Screen name="year" options={{ title: "Your year receipt" }} />
+          <Stack.Screen name="tools" options={{ title: "Calculators" }} />
+          <Stack.Screen name="track/[id]" options={{ title: "Your track" }} />
           <Stack.Screen name="transactions" options={{ title: "Accounts & transactions" }} />
         </Stack>
       </PaperProvider>

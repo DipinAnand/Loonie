@@ -105,6 +105,10 @@ export default function Connect() {
         </HelperText>
       )}
 
+      <Button icon="file-upload-outline" disabled={busy} onPress={() => router.push("/import")}>
+        No bank login? Scan a statement file instead
+      </Button>
+
       {sandbox && (
         <Card mode="outlined" style={{ marginTop: 8 }}>
           <Card.Title title="Plaid Sandbox" subtitle="Test banks, no real money" />

@@ -1,6 +1,7 @@
 import { alertsFor, completedQuests, completeQuest, scansForUser, unlockBadge, unlockedBadges, type UserRow } from "../db.js";
 import { openForUser } from "../keys.js";
-import { type LedgerReceipt, readReceipt, type ScanSummary } from "../ledger.js";
+import { FX_SPREAD } from "../engine/advice.js";
+import { type LedgerLeak, type LedgerReceipt, readReceipt, type ScanSummary } from "../ledger.js";
 import { BADGES, earnedBadges } from "./achievements.js";
 import { currentHunt } from "./hunt.js";
 import { deliverAlerts, expoPushSender, type PushSender } from "./notify.js";
@@ -164,18 +165,20 @@ export async function alertInbox(user: UserRow) {
 }
 
 /**
- * "What your banks charged you" for one calendar year: money actually paid
+ * "What your banks charged you" for one calendar year: money actually lost
  * to each leak that year (from its charge history), and which ones are fixed.
  * Shareable: titles are generic kinds of charge, never account numbers.
  */
 export async function yearReceipt(user: UserRow, year: string) {
   const receipt = await readReceipt(user);
-  const lines = [...receipt.leaks, ...receipt.resolved]
+  const all = [...receipt.leaks, ...receipt.resolved];
+  const subscriptions = new Set(all.filter((l) => l.kind === "subscription").map((l) => l.merchantKey));
+  const lines = all
     .map((l) => ({
       id: l.id,
       kind: l.kind,
       title: l.title,
-      amount: Math.round(l.history.filter((h) => h.date.startsWith(year)).reduce((s, h) => s + h.amount, 0) * 100) / 100,
+      amount: Math.round(lostInYear(l, year, subscriptions) * 100) / 100,
       fixed: l.verdict === "confirmed" && l.status === "resolved",
     }))
     .filter((l) => l.amount > 0)
@@ -189,4 +192,28 @@ export async function yearReceipt(user: UserRow, year: string) {
     fixedCount: fixed.length,
     fixedAmount: Math.round(fixed.reduce((s, l) => s + l.amount, 0) * 100) / 100,
   };
+}
+
+/** What a leak actually cost in one year. Its history holds the charges behind it, which is not always the loss. */
+export function lostInYear(l: Pick<LedgerLeak, "kind" | "merchantKey" | "history" | "meta">, year: string, subscriptions: Set<string>): number {
+  const inYear = l.history.filter((h) => h.date.startsWith(year));
+  const sum = inYear.reduce((s, h) => s + h.amount, 0);
+  switch (l.kind) {
+    case "fee":
+      // The spread's history is the foreign purchases; the loss is the markup on them.
+      return l.merchantKey === "fx_spread" ? sum * FX_SPREAD : sum;
+    case "duplicate":
+      // Two identical charges: one of them is the leak.
+      return inYear.length ? Math.max(...inYear.map((h) => h.amount)) : 0;
+    case "price_hike": {
+      // Already inside the subscription's own line when that is on the receipt.
+      if (subscriptions.has(l.merchantKey) || l.meta.lastAmount === undefined || l.meta.previousAmount === undefined) return 0;
+      const atNewPrice = inYear.filter((h) => Math.abs(h.amount - l.meta.lastAmount!) < 0.01).length;
+      return atNewPrice * (l.meta.lastAmount - l.meta.previousAmount);
+    }
+    case "subscription":
+      return sum;
+    default:
+      return 0;
+  }
 }

@@ -128,9 +128,18 @@ the app once the screens are built from the Stitch mocks; record the final video
 | --- | --- |
 | `fees.ts` | English and French descriptor regexes plus Plaid `personal_finance_category` → NSF, overdraft, monthly account, FX, ATM, transaction, interest, late and annual fees |
 | `recurring.ts` | Normalizes merchants (strips PAD/POS/SQ*, store numbers, reference codes), then detects weekly-to-annual cadence, amount stability, active/inactive status and price steps |
-| `receipt.ts` | Builds leaks (fee, subscription, price_hike, duplicate) with stable ids, a yearly cost and a feature snapshot. Totals skip dismissed leaks and never double count a price hike |
+| `receipt.ts` | Builds leaks (fee, subscription, price_hike, duplicate) with stable ids, a yearly cost and a feature snapshot. Refunds and reversals cancel their debit first. NSF fees above the $10 cap (since 2026-03-12) are their own finding; foreign purchases get a 2.5% spread estimate when no FX fee line shows. Totals skip dismissed leaks and never double count a price hike |
+| `advice.ts` | Rule version (`v1.3`), confidence (high / check), a fix line and the exact words to say for every finding; the A–D "quiet score"; the one next move ranked by dollars saved |
+| `switchkit.ts` | Every recurring deposit and payment (PADs, payroll, mortgage), deposits first, for moving banks without anything bouncing |
+| `renewal.ts` | Mortgage countdown: 180 / 120 / 90 / 21-day milestones, the action for each, alert timing |
+| `forecast.ts` | "Know before it bounces": 30 days of chequing balance from live balances plus the switch kit, the first short day, and which other account can cover it; net worth |
 | `scenario.ts` | Deterministic leaky test account, shared by the tests and the sandbox quick-link |
 | `training.ts` | Turns a labeled leak into a de-identified training row (amount ranges, no person-like descriptors) |
+
+Also on the server: `statement/csv.ts` reads CSV/TXT statement exports (ported from the loonifinancial.com scan:
+delimiter, header and column detection, English and French dates and amounts, card payments and transfers never
+counted as spending), `tools/calc.ts` holds the /tools calculators (they reproduce the site's published figures),
+and `engagement/tracks.ts` the newcomer and student tracks.
 
 **The leak ledger** (`server/src/ledger.ts`) is how Looni keeps track over time without storing transactions. Each
 leak has a stable id, first and last seen dates, a status (`open` → `resolved` once it stops showing up in a complete
@@ -168,9 +177,12 @@ credentials uploaded to EAS.
 
 ## Design
 
-The custom UI is being designed in Google Stitch. See **[design/STITCH_BRIEF.md](design/STITCH_BRIEF.md)** for the
-brand brief, the style preamble and the 14 screen prompts. Mocks go in `design/mocks/`. `mobile/src/ui/tokens.ts`
-holds the design tokens (placeholders until the mocks land).
+The app now uses the loonifinancial.com look: lavender, loonie yellow, green and burnt orange on white
+(`mobile/src/theme.ts`, `mobile/src/ui/tokens.ts`). Five tabs: **Home** (net worth, bounce risk, renewal, leaks,
+next move), **Receipt** (the Leak Receipt; every line opens its evidence and script), **Move** (renewal countdown,
+switch kit, Rate Block pool), **Loon** (level, weekly check, quests, newcomer/student tracks, badges) and **Alerts**.
+Plus statement import, the 30-day forecast, calculators and a shareable year receipt.
+[design/STITCH_BRIEF.md](design/STITCH_BRIEF.md) is the earlier dark-theme brief.
 
 ## API
 
@@ -196,6 +208,14 @@ holds the design tokens (placeholders until the mocks land).
 | GET/PUT | `/api/settings/notifications` | Push on/off, hide amounts (default on), quiet hours, alert kinds, time zone |
 | GET | `/api/share` | Privacy-safe numbers for the share card |
 | GET | `/api/report?month=YYYY-MM` | Monthly Leak Report |
+| POST | `/api/statements` | `{ files: [{ name, text }], save?: boolean }`: CSV/TXT statement import. Preview stores nothing; `save: true` stores findings only |
+| GET | `/api/overview` | Net worth and the 30-day forecast, from **live balances, not stored** |
+| GET | `/api/receipt/year?year=YYYY` | What your banks charged you that year, line by line, and what's fixed |
+| GET/PUT/DELETE | `/api/renewal` | Mortgage maturity date (+ optional balance and rates) → countdown, milestones, letter cost, biweekly savings |
+| GET · POST | `/api/switch-kit` · `/api/switch-kit/:key` | Recurring deposits and payments; `{ moved }` ticks |
+| GET · POST | `/api/tracks` · `/api/tracks/:track/:task` | Newcomer and student tracks; `{ done }` ticks |
+| GET · POST/DELETE | `/api/rate-block` · `/api/rate-block/join` | Rate Block pool pledge per province and renewal quarter (`{ province }`) |
+| POST | `/api/tools/:id` | Calculators: `renewal`, `biweekly`, `break`, `rateblock`, `credit`, `budget`, `tfsa`, `rentvbuy`, `car` |
 
 All `/api` calls need an `x-looni-user` header: an anonymous UUID the app keeps in SecureStore. **Replace it with real
 auth before production.**
@@ -217,5 +237,7 @@ git checkout claude/plaid-onboarding-expo-mvp-mfmzjo     # the MVP branch, until
 
 ## Not in this MVP (on purpose)
 
-Real auth, AWS KMS wiring, Plaid OAuth redirect setup for production banks, hosted Postgres, and any ML. The full
+Real auth, AWS KMS wiring, Plaid OAuth redirect setup for production banks, hosted Postgres, and any ML. From the
+website: PDF statement parsing, Pro billing, the AI coach, referral payouts, the household/family view, French UI,
+and the Rate Block's actual lender negotiation (the app only takes pledges; it shows no group rate until a pool opens). The full
 pre-launch list is in [SECURITY.md](SECURITY.md#before-production-not-done-in-the-mvp).

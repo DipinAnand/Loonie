@@ -11,19 +11,28 @@ const KIND: Record<LeakKind, { icon: string; label: string; confirm: string; dis
   suspicious: { icon: "shield-alert-outline", label: "Suspicious", confirm: "Not me", dismiss: "This was me" },
 };
 
-export function LeakCard({ leak, onVerdict }: { leak: Leak; onVerdict: (v: Verdict) => void }) {
+export function LeakCard({ leak, onVerdict, onOpen }: { leak: Leak; onVerdict: (v: Verdict) => void; onOpen?: () => void }) {
   const theme = useTheme();
   const k = KIND[leak.kind];
   const dismissed = leak.verdict === "dismissed";
 
   return (
-    <Card mode="elevated" style={[styles.card, dismissed && { opacity: 0.55 }]}>
+    <Card mode="outlined" style={[styles.card, dismissed && { opacity: 0.55 }]} onPress={onOpen} accessibilityHint={onOpen ? "Opens the charges behind this leak" : undefined}>
       <Card.Content style={{ gap: 6 }}>
         <View style={styles.row}>
           <View style={styles.chips}>
             <Chip icon={k.icon} compact>
               {k.label}
             </Chip>
+            {leak.meta.confidence && (
+              <Chip
+                compact
+                style={{ backgroundColor: leak.meta.confidence === "high" ? theme.colors.errorContainer : theme.colors.secondaryContainer }}
+                textStyle={{ color: leak.meta.confidence === "high" ? theme.colors.onErrorContainer : theme.colors.onSecondaryContainer, fontWeight: "800" }}
+              >
+                {leak.meta.confidence === "high" ? "HIGH" : "CHECK"}
+              </Chip>
+            )}
             {leak.isNew && (
               <Chip compact style={{ backgroundColor: theme.colors.primaryContainer }} textStyle={{ color: theme.colors.onPrimaryContainer }}>
                 New
@@ -39,6 +48,16 @@ export function LeakCard({ leak, onVerdict }: { leak: Leak; onVerdict: (v: Verdi
         <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
           {leak.detail}
         </Text>
+        {leak.meta.fix && (
+          <Text variant="bodySmall" style={{ color: theme.colors.primary, fontWeight: "600" }}>
+            {leak.meta.fix}
+          </Text>
+        )}
+        {leak.meta.ruleVersion && (
+          <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>
+            Rule v{leak.meta.ruleVersion} · Confidence: {leak.meta.confidence === "high" ? "High" : "Check it"}
+          </Text>
+        )}
       </Card.Content>
       <Card.Actions>
         <Button compact mode={leak.verdict === "dismissed" ? "contained-tonal" : "text"} onPress={() => onVerdict("dismissed")}>
@@ -55,5 +74,5 @@ export function LeakCard({ leak, onVerdict }: { leak: Leak; onVerdict: (v: Verdi
 const styles = StyleSheet.create({
   card: { marginBottom: 12 },
   row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  chips: { flexDirection: "row", gap: 6 },
+  chips: { flexDirection: "row", gap: 6, flexWrap: "wrap", flex: 1 },
 });

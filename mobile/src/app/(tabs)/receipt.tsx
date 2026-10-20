@@ -1,19 +1,21 @@
-import { router, Stack } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { router, useFocusEffect, useNavigation } from "expo-router";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Alert, FlatList, Platform, RefreshControl, StyleSheet, View } from "react-native";
 import { ActivityIndicator, Banner, Button, Card, IconButton, List, Snackbar, Text, useTheme } from "react-native-paper";
-import { LeakCard } from "../components/LeakCard";
-import { api } from "../lib/api";
-import { money } from "../lib/format";
-import { openPlaidLink } from "../lib/plaidLink";
-import { enablePush } from "../lib/push";
-import type { Connection, LeakReceipt, Verdict } from "../lib/types";
-import { resetUserId } from "../lib/user";
+import { LeakCard } from "../../components/LeakCard";
+import { gradeTone, Overline, Panel, Pill, tones } from "../../components/ui";
+import { api } from "../../lib/api";
+import { money } from "../../lib/format";
+import { openPlaidLink } from "../../lib/plaidLink";
+import { enablePush } from "../../lib/push";
+import type { Connection, LeakReceipt, Verdict } from "../../lib/types";
+import { resetUserId } from "../../lib/user";
 
 const stoppedLabel = (n: number) => (n === 1 ? "1 leak you flagged has stopped" : `${n} leaks you flagged have stopped`);
 
 export default function Receipt() {
   const theme = useTheme();
+  const navigation = useNavigation();
   const [receipt, setReceipt] = useState<LeakReceipt | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,9 +28,16 @@ export default function Receipt() {
     }
   }, []);
 
-  useEffect(() => {
-    load();
-  }, [load]);
+  // Reload when the tab comes back into view (a verdict on the evidence screen changes the total).
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load]),
+  );
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ headerRight: () => <IconButton icon="format-list-bulleted" accessibilityLabel="Accounts and transactions" onPress={() => router.push("/transactions")} /> });
+  }, [navigation]);
 
   // Ask for notifications only after the user has seen their leaks (never at first launch).
   const leakCount = receipt?.leaks.length ?? 0;
@@ -108,12 +117,11 @@ export default function Receipt() {
   const broken = receipt.connections.filter((c) => c.status !== "healthy");
   const confirmed = receipt.leaks.filter((l) => l.verdict === "confirmed").length;
   const newCount = receipt.leaks.filter((l) => l.isNew).length;
+  const t = tones(theme.dark);
+  const openLeak = (id: string) => router.push({ pathname: "/leak/[id]", params: { id } });
 
   return (
     <>
-      <Stack.Screen
-        options={{ headerRight: () => <IconButton icon="format-list-bulleted" onPress={() => router.push("/transactions")} /> }}
-      />
       <FlatList
         data={receipt.leaks}
         keyExtractor={(l) => l.id}
@@ -142,29 +150,38 @@ export default function Receipt() {
             {receipt.suspicious
               .filter((l) => l.verdict === null)
               .map((l) => (
-                <LeakCard key={l.id} leak={l} onVerdict={(v) => label(l.id, v)} />
+                <LeakCard key={l.id} leak={l} onVerdict={(v) => label(l.id, v)} onOpen={() => openLeak(l.id)} />
               ))}
 
-            <Card mode="contained" style={{ backgroundColor: theme.colors.secondaryContainer }}>
-              <Card.Content style={{ gap: 4 }}>
-                <Text variant="labelLarge" style={{ color: theme.colors.onSecondaryContainer, letterSpacing: 1.5 }}>
-                  YOU'RE LEAKING
+            <Panel>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                <Overline>LEAKING THIS YEAR</Overline>
+                {receipt.grade && <Pill label={`Your bank's quiet score: ${receipt.grade}`} tone={gradeTone[receipt.grade]} />}
+              </View>
+              <Text variant="displayMedium" style={{ fontWeight: "800", color: theme.colors.error, fontVariant: ["tabular-nums"] }}>
+                {money(receipt.totalAnnualImpact)}
+                <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant }}>
+                  {" "}
+                  / year
                 </Text>
-                <Text variant="displayMedium" style={{ fontWeight: "800", color: theme.colors.onSecondaryContainer }}>
-                  {money(receipt.totalAnnualImpact)}
-                  <Text variant="titleMedium" style={{ color: theme.colors.onSecondaryContainer }}>
-                    {" "}
-                    / year
-                  </Text>
-                </Text>
-                <Text variant="bodyMedium" style={{ color: theme.colors.onSecondaryContainer }}>
+              </Text>
+              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
                   {receipt.leaks.length} {receipt.leaks.length === 1 ? "leak" : "leaks"}
                   {newCount ? ` (${newCount} new)` : ""} across {receipt.transactionCount} transactions
                   {receipt.windowStart ? ` since ${receipt.windowStart}` : ""}.{" "}
-                  {confirmed ? `${confirmed} confirmed.` : "Tell us which ones are real."}
+                {confirmed ? `${confirmed} confirmed.` : "Tell us which ones are real."} Every amount opens to the charges behind it.
+              </Text>
+            </Panel>
+
+            {receipt.nextMove && (
+              <Panel tone="yellow" onPress={() => openLeak(receipt.nextMove!.leakId)}>
+                <Overline color={t.yellow.fg}>ONE NEXT MOVE</Overline>
+                <Text variant="titleMedium" style={{ fontWeight: "700", color: t.yellow.fg }}>
+                  {receipt.nextMove.title}
                 </Text>
-              </Card.Content>
-            </Card>
+                <Text style={{ color: t.yellow.fg, fontWeight: "700" }}>Saves {money(receipt.nextMove.savesPerYear)} a year</Text>
+              </Panel>
+            )}
 
             {receipt.savedPerYear > 0 && (
               <Card mode="contained" style={{ backgroundColor: theme.colors.tertiaryContainer }}>
@@ -180,13 +197,14 @@ export default function Receipt() {
 
             {receipt.lastScanAt && (
               <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                Last scanned {receipt.lastScanAt.replace(" ", " at ")} UTC{receipt.lastScanComplete ? "" : " (some accounts unavailable)"}.
-                Pull down to scan again.
+                {receipt.connections.length
+                  ? `Last scanned ${receipt.lastScanAt.replace(" ", " at ")} UTC${receipt.lastScanComplete ? "" : " (some accounts unavailable)"}. Pull down to scan again.`
+                  : `From your statement scan on ${receipt.lastScanAt.slice(0, 10)}. Connect a bank to keep it up to date.`}
               </Text>
             )}
           </View>
         }
-        renderItem={({ item }) => <LeakCard leak={item} onVerdict={(v) => label(item.id, v)} />}
+        renderItem={({ item }) => <LeakCard leak={item} onVerdict={(v) => label(item.id, v)} onOpen={() => openLeak(item.id)} />}
         ListEmptyComponent={
           <Text variant="bodyLarge" style={{ textAlign: "center", marginTop: 32, color: theme.colors.onSurfaceVariant }}>
             {receipt.lastScanAt ? "No leaks found. Nice!" : "No scan yet. Plaid can take a minute to fetch transactions. Pull down to scan."}
@@ -209,6 +227,12 @@ export default function Receipt() {
             )}
             <Button icon="bank-plus" onPress={() => router.push("/connect")}>
               Add another account
+            </Button>
+            <Button icon="file-upload-outline" onPress={() => router.push("/import")}>
+              Scan a statement file
+            </Button>
+            <Button icon="share-variant-outline" onPress={() => router.push("/year")}>
+              Share your year receipt
             </Button>
             <Button icon="delete-outline" textColor={theme.colors.error} onPress={disconnect}>
               Disconnect & delete my data

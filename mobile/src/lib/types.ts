@@ -19,8 +19,32 @@ export interface Leak {
   detail: string;
   merchantKey: string;
   annualImpact: number;
-  meta: { cadence?: string; lastAmount?: number; nextExpectedDate?: string; rule?: string; date?: string };
+  meta: LeakMeta;
   history: { date: string; amount: number }[];
+}
+
+export interface LeakMeta {
+  cadence?: string;
+  lastAmount?: number;
+  nextExpectedDate?: string;
+  rule?: string;
+  date?: string;
+  /** "high" when a fee line proves it; "medium" when the user should check. */
+  confidence?: "high" | "medium";
+  ruleVersion?: string;
+  fix?: string;
+  /** Exact words to say to the bank or merchant. */
+  script?: string;
+}
+
+export type Grade = "A" | "B" | "C" | "D";
+
+export interface NextMove {
+  leakId: string;
+  title: string;
+  savesPerYear: number;
+  fix: string;
+  script: string | null;
 }
 
 export interface Connection {
@@ -34,6 +58,8 @@ export interface LeakReceipt {
   lastScanAt: string | null;
   lastScanComplete: boolean;
   totalAnnualImpact: number;
+  grade: Grade | null;
+  nextMove: NextMove | null;
   savedPerYear: number;
   transactionCount: number;
   windowStart: string | null;
@@ -110,6 +136,10 @@ export interface Home {
   savedPerYear: number;
   savedToDate: number;
   stillLeakingPerYear: number;
+  grade: Grade | null;
+  nextMove: NextMove | null;
+  renewal: { daysLeft: number; action: string; band: RenewalBand } | null;
+  switchKit: { moved: number; total: number };
   loonies: number;
   level: Level;
   next: { level: Level; at: number } | null;
@@ -135,7 +165,7 @@ export interface Hunt {
 
 export interface Alert {
   key: string;
-  kind: "suspicious" | "renewal" | "fee" | "price_hike" | "new_leak" | "hunt" | "report";
+  kind: "suspicious" | "renewal" | "mortgage" | "fee" | "price_hike" | "new_leak" | "hunt" | "report";
   security: boolean;
   createdAt: string;
   read: boolean;
@@ -177,4 +207,139 @@ export interface MonthlyReport {
   scoreStart: number | null;
   scoreEnd: number | null;
   stillOpen: number;
+}
+
+// ---- statements, overview, renewal, switch kit, tracks, tools ----
+
+export interface StatementFileSummary {
+  name: string;
+  transactions: number;
+  skippedRows: number;
+}
+
+/** Preview of an imported statement: the engine's receipt, nothing stored. */
+export interface StatementPreview {
+  saved: false;
+  statements: StatementFileSummary[];
+  receipt: {
+    windowStart: string | null;
+    windowEnd: string | null;
+    transactionCount: number;
+    totalAnnualImpact: number;
+    grade: Grade;
+    nextMove: NextMove | null;
+    leaks: (Omit<Leak, "status" | "isNew" | "firstSeen" | "lastSeen" | "resolvedAt" | "verdictAt" | "history"> & { txnIds: string[] })[];
+  };
+}
+
+export interface StatementSaved {
+  saved: true;
+  statements: StatementFileSummary[];
+  receipt: LeakReceipt;
+}
+
+export interface OverviewAccount {
+  id: string;
+  name: string;
+  type: string;
+  subtype: string | null;
+  balance: number | null;
+  available: number | null;
+}
+
+export interface Forecast {
+  days: number;
+  series: { date: string; balance: number }[];
+  low: { date: string; balance: number } | null;
+  bounce: { date: string; shortBy: number; before: string[] } | null;
+  cover: { accountId: string; name: string; amount: number } | null;
+  safeToSpend: number;
+  payday: string | null;
+}
+
+export interface Overview {
+  complete: boolean;
+  accounts: OverviewAccount[];
+  netWorth: { assets: number; debts: number; net: number };
+  forecast: Forecast | null;
+  leaksPerYear: number;
+  grade: Grade | null;
+  renewal: { daysLeft: number; maturityDate: string } | null;
+}
+
+export type RenewalBand = "red" | "amber" | "calm";
+
+export interface Renewal {
+  maturityDate: string;
+  balance?: number;
+  letterRate?: number;
+  quoteRate?: number;
+  amortizationYears?: number;
+  daysLeft: number;
+  currentMilestone: string | null;
+  action: string;
+  band: RenewalBand;
+  progress: number;
+  milestones: { id: string; days: number; label: string; date: string; status: "passed" | "upcoming" }[];
+  costs: { letterPayment: number; quotePayment: number; monthlyDifference: number; termCost: number } | null;
+  biweekly: { monthlyPayment: number; biweeklyPayment: number; interestSaved: number; yearsSooner: number } | null;
+}
+
+export interface SwitchItem {
+  key: string;
+  name: string;
+  direction: "deposit" | "payment";
+  cadence: string;
+  amount: number;
+  lastDate: string;
+  nextDate: string;
+  count: number;
+  moved: boolean;
+  movedAt: string | null;
+}
+
+export interface SwitchKit {
+  items: SwitchItem[];
+  moved: number;
+  total: number;
+  next: string | null;
+}
+
+export interface TrackTask {
+  id: string;
+  week: number;
+  title: string;
+  why: string;
+  auto: boolean;
+  done: boolean;
+  doneAt: string | null;
+}
+
+export interface Track {
+  id: "newcomers" | "students";
+  title: string;
+  subtitle: string;
+  levels: string[];
+  level: string;
+  index: number;
+  done: number;
+  total: number;
+  next: string | null;
+  tasks: TrackTask[];
+}
+
+export interface YearReceipt {
+  year: string;
+  charged: number;
+  lines: { id: string; kind: LeakKind; title: string; amount: number; fixed: boolean }[];
+  fixedCount: number;
+  fixedAmount: number;
+}
+
+export interface RateBlock {
+  goal: number;
+  pledged: boolean;
+  pool: { id: string; joined: number; joinedAt: string } | null;
+  renewalQuarter: string | null;
+  status: "coming_2027";
 }

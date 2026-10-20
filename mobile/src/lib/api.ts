@@ -11,11 +11,19 @@ import type {
   LeakReceipt,
   MonthlyReport,
   NotificationSettings,
+  Overview,
   Quest,
   QuickLinkResult,
+  RateBlock,
+  Renewal,
   ShareStats,
+  StatementPreview,
+  StatementSaved,
+  SwitchKit,
+  Track,
   Txn,
   Verdict,
+  YearReceipt,
 } from "./types";
 
 /**
@@ -87,4 +95,24 @@ export const api = {
   share: () => request<ShareStats>("/api/share"),
   report: (month: string) => request<MonthlyReport>(`/api/report?month=${month}`),
   deleteMe: () => request("/api/me", { method: "DELETE" }),
+
+  /** Statement files are parsed in memory on the server; a preview stores nothing. */
+  previewStatements: (files: { name: string; text: string }[]) => post<StatementPreview>("/api/statements", { files }),
+  saveStatements: (files: { name: string; text: string }[]) => post<StatementSaved>("/api/statements", { files, save: true }),
+  /** Live balances and the 30-day forecast; balances are not stored. */
+  overview: () => request<Overview>("/api/overview"),
+  yearReceipt: (year?: string) => request<YearReceipt>(`/api/receipt/year${year ? `?year=${year}` : ""}`),
+  renewal: () => request<{ renewal: Renewal | null }>("/api/renewal"),
+  setRenewal: (input: { maturityDate: string; balance?: number; letterRate?: number; quoteRate?: number; amortizationYears?: number }) =>
+    request<{ renewal: Renewal }>("/api/renewal", { method: "PUT", body: JSON.stringify(input) }),
+  clearRenewal: () => request("/api/renewal", { method: "DELETE" }),
+  switchKit: () => request<SwitchKit>("/api/switch-kit"),
+  setMoved: (key: string, moved: boolean) => post<SwitchKit>(`/api/switch-kit/${encodeURIComponent(key)}`, { moved }),
+  tracks: () => request<{ tracks: Track[] }>("/api/tracks"),
+  setTrackTask: (track: Track["id"], task: string, done: boolean) =>
+    post<Track>(`/api/tracks/${track}/${encodeURIComponent(task)}`, { done }),
+  rateBlock: () => request<RateBlock>("/api/rate-block"),
+  joinRateBlock: (province: string) => post<RateBlock>("/api/rate-block/join", { province }),
+  leaveRateBlock: () => request<RateBlock>("/api/rate-block", { method: "DELETE" }),
+  tool: <T>(id: string, input: Record<string, number | string>) => post<{ result: T }>(`/api/tools/${id}`, input),
 };

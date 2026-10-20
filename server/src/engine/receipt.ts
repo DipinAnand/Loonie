@@ -238,7 +238,7 @@ function priceHikeLeaks(recurring: RecurringSeries[]): Leak[] {
       txnIds: s.txnIds.slice(-2),
       features: { cadence: s.cadence, previousAmount: s.previousAmount, lastAmount: s.lastAmount, delta: round2(delta), chargesSinceStep: s.chargesSinceStep },
       meta: withAdvice(
-        { cadence: s.cadence, lastAmount: s.lastAmount, date: s.lastDate },
+        { cadence: s.cadence, lastAmount: s.lastAmount, previousAmount: s.previousAmount, date: s.lastDate },
         { kind: "price_hike", key: s.merchantKey, displayName: s.displayName, amount: s.lastAmount, count: s.count, firstDate: s.firstDate, previousAmount: s.previousAmount },
       ),
     });

@@ -13,7 +13,7 @@ const { leakScore } = await import("./score.js");
 const { huntStreak, levelFor, savedToDate, outcomeStreaks } = await import("./progress.js");
 const { evaluateQuests } = await import("./quests.js");
 const { buildCandidates, deliverAlerts, hashToken } = await import("./notify.js");
-const { homeFor, notifyUser, alertInbox } = await import("./service.js");
+const { homeFor, notifyUser, alertInbox, lostInYear } = await import("./service.js");
 const { currentHunt } = await import("./hunt.js");
 const { getUser, upsertPushToken, setNotifySettings, setTimezone } = await import("../db.js");
 const { sealForUser } = await import("../keys.js");
@@ -228,5 +228,18 @@ describe("home, end to end on a seeded ledger", () => {
 
     // notifyUser runs without a device token and still fills the inbox.
     await notifyUser(user, new Date(), { send: async () => ({ deadTokens: [] }) });
+  });
+});
+
+describe("year receipt", () => {
+  const h = (dates: string[], amount: number) => dates.map((date) => ({ date, amount }));
+  const subs = new Set(["streamco"]);
+  it("counts the markup on foreign purchases, one charge of a double charge, and hikes only outside their subscription", () => {
+    assert.equal(lostInYear({ kind: "fee", merchantKey: "fx_spread", history: h(["2026-07-08"], 1000), meta: {} }, "2026", subs), 25);
+    assert.equal(lostInYear({ kind: "fee", merchantKey: "nsf", history: h(["2025-12-01", "2026-01-14"], 48), meta: {} }, "2026", subs), 48);
+    assert.equal(lostInYear({ kind: "duplicate", merchantKey: "resto", history: h(["2026-09-20", "2026-09-20"], 64.2), meta: {} }, "2026", subs), 64.2);
+    const hike = { kind: "price_hike" as const, history: h(["2026-09-05", "2026-10-05"], 19.99), meta: { lastAmount: 19.99, previousAmount: 16.99 } };
+    assert.equal(lostInYear({ ...hike, merchantKey: "streamco" }, "2026", subs), 0);
+    assert.equal(Math.round(lostInYear({ ...hike, merchantKey: "spotify" }, "2026", subs) * 100) / 100, 6);
   });
 });
