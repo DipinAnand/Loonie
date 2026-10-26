@@ -8,6 +8,7 @@ import { Figure, gradeTone, Overline, Panel, Pill, tones } from "../components/u
 import { api } from "../lib/api";
 import { money } from "../lib/format";
 import type { StatementPreview } from "../lib/types";
+import { font } from "../theme";
 
 const MAX_BYTES = 7_500_000;
 
@@ -96,7 +97,7 @@ export default function ImportStatement() {
         {r.nextMove && (
           <Panel tone="yellow">
             <Overline color={t.yellow.fg}>ONE NEXT MOVE</Overline>
-            <Text variant="titleMedium" style={{ color: t.yellow.fg, fontWeight: "700" }}>
+            <Text variant="titleMedium" style={{ color: t.yellow.fg, fontFamily: font.bold }}>
               {r.nextMove.title}
             </Text>
             {r.nextMove.script && <Text style={{ color: t.yellow.fg }}>“{r.nextMove.script}”</Text>}
@@ -106,10 +107,10 @@ export default function ImportStatement() {
         {r.leaks.map((l) => (
           <Panel key={l.id}>
             <View style={styles.row}>
-              <Text variant="titleMedium" style={{ fontWeight: "700", flex: 1 }}>
+              <Text variant="titleMedium" style={{ fontFamily: font.bold, flex: 1 }}>
                 {l.title}
               </Text>
-              <Text style={{ fontWeight: "800", color: theme.colors.error, fontVariant: ["tabular-nums"] }}>{money(l.annualImpact)}</Text>
+              <Text style={{ fontFamily: font.heavy, color: theme.colors.error, fontVariant: ["tabular-nums"] }}>{money(l.annualImpact)}</Text>
             </View>
             <Text style={{ color: theme.colors.onSurfaceVariant }}>{l.detail}</Text>
             {l.meta.confidence && <Pill label={l.meta.confidence === "high" ? "HIGH" : "CHECK"} tone={l.meta.confidence === "high" ? "leak" : "yellow"} />}
@@ -131,14 +132,14 @@ export default function ImportStatement() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text variant="headlineSmall" style={{ fontWeight: "800" }}>
+      <Text variant="headlineSmall" style={{ fontFamily: font.display }}>
         Drop a statement, see your number
       </Text>
       <Text style={{ color: theme.colors.onSurfaceVariant }}>
         Export your transactions as CSV from your bank's website (chequing or credit card, up to 12 months). Pick several files to merge them into one receipt.
       </Text>
       <Panel tone="lavender">
-        <Text style={{ color: t.lavender.fg, fontWeight: "700" }}>✓ No bank login · ✓ Nothing moves · ✓ The file isn't kept</Text>
+        <Text style={{ color: t.lavender.fg, fontFamily: font.bold }}>✓ No bank login · ✓ Nothing moves · ✓ The file isn't kept</Text>
         <Text style={{ color: t.lavender.fg }}>CSV and plain-text exports work today, in English or French. PDF statements come next.</Text>
       </Panel>
       {error && (

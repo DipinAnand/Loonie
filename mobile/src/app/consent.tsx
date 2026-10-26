@@ -3,6 +3,7 @@ import { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, Card, Divider, HelperText, List, Switch, Text, useTheme } from "react-native-paper";
 import { api } from "../lib/api";
+import { font } from "../theme";
 
 /** Plain-language data notice + the opt-in for anonymous training data. Shown before any bank is connected. */
 export default function Consent() {
@@ -25,7 +26,7 @@ export default function Consent() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text variant="headlineSmall" style={{ fontWeight: "700" }}>
+      <Text variant="headlineSmall" style={{ fontFamily: font.display }}>
         How Looni handles your bank data
       </Text>
 

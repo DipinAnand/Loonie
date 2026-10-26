@@ -2,6 +2,7 @@ import { StyleSheet, View } from "react-native";
 import { Button, Card, Chip, Text, useTheme } from "react-native-paper";
 import { money } from "../lib/format";
 import type { Leak, LeakKind, Verdict } from "../lib/types";
+import { font } from "../theme";
 
 const KIND: Record<LeakKind, { icon: string; label: string; confirm: string; dismiss: string }> = {
   fee: { icon: "bank-minus", label: "Bank fees", confirm: "Yes, a leak", dismiss: "Expected" },
@@ -28,7 +29,7 @@ export function LeakCard({ leak, onVerdict, onOpen }: { leak: Leak; onVerdict: (
               <Chip
                 compact
                 style={{ backgroundColor: leak.meta.confidence === "high" ? theme.colors.errorContainer : theme.colors.secondaryContainer }}
-                textStyle={{ color: leak.meta.confidence === "high" ? theme.colors.onErrorContainer : theme.colors.onSecondaryContainer, fontWeight: "800" }}
+                textStyle={{ color: leak.meta.confidence === "high" ? theme.colors.onErrorContainer : theme.colors.onSecondaryContainer, fontFamily: font.heavy }}
               >
                 {leak.meta.confidence === "high" ? "HIGH" : "CHECK"}
               </Chip>
@@ -39,7 +40,7 @@ export function LeakCard({ leak, onVerdict, onOpen }: { leak: Leak; onVerdict: (
               </Chip>
             )}
           </View>
-          <Text variant="titleMedium" style={{ color: dismissed ? theme.colors.onSurfaceVariant : theme.colors.error, fontWeight: "700" }}>
+          <Text variant="titleMedium" style={{ color: dismissed ? theme.colors.onSurfaceVariant : theme.colors.error, fontFamily: font.bold }}>
             {money(leak.annualImpact)}
             <Text variant="bodySmall">{leak.kind === "duplicate" ? "" : "/yr"}</Text>
           </Text>
@@ -49,7 +50,7 @@ export function LeakCard({ leak, onVerdict, onOpen }: { leak: Leak; onVerdict: (
           {leak.detail}
         </Text>
         {leak.meta.fix && (
-          <Text variant="bodySmall" style={{ color: theme.colors.primary, fontWeight: "600" }}>
+          <Text variant="bodySmall" style={{ color: theme.colors.primary, fontFamily: font.semibold }}>
             {leak.meta.fix}
           </Text>
         )}

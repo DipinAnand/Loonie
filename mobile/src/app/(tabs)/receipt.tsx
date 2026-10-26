@@ -3,13 +3,15 @@ import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { Alert, FlatList, Platform, RefreshControl, StyleSheet, View } from "react-native";
 import { ActivityIndicator, Banner, Button, Card, IconButton, List, Snackbar, Text, useTheme } from "react-native-paper";
 import { LeakCard } from "../../components/LeakCard";
-import { gradeTone, Overline, Panel, Pill, tones } from "../../components/ui";
+import { ReceiptCard } from "../../components/ReceiptCard";
+import { Overline, Panel, SectionTitle, tones } from "../../components/ui";
 import { api } from "../../lib/api";
 import { inDaysLabel, money } from "../../lib/format";
 import { openPlaidLink } from "../../lib/plaidLink";
 import { enablePush } from "../../lib/push";
 import type { Bills, Connection, LeakReceipt, Verdict } from "../../lib/types";
 import { resetUserId } from "../../lib/user";
+import { font } from "../../theme";
 
 const stoppedLabel = (n: number) => (n === 1 ? "1 leak you flagged has stopped" : `${n} leaks you flagged have stopped`);
 
@@ -164,33 +166,23 @@ export default function Receipt() {
                 <LeakCard key={l.id} leak={l} onVerdict={(v) => label(l.id, v)} onOpen={() => openLeak(l.id)} />
               ))}
 
-            <Panel>
-              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                <Overline>LEAKING THIS YEAR</Overline>
-                {receipt.grade && <Pill label={`Your bank's quiet score: ${receipt.grade}`} tone={gradeTone[receipt.grade]} />}
-              </View>
-              <Text variant="displayMedium" style={{ fontWeight: "800", color: theme.colors.error, fontVariant: ["tabular-nums"] }}>
-                {money(receipt.totalAnnualImpact)}
-                <Text variant="titleMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-                  {" "}
-                  / year
-                </Text>
-              </Text>
-              <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-                  {receipt.leaks.length} {receipt.leaks.length === 1 ? "leak" : "leaks"}
-                  {newCount ? ` (${newCount} new)` : ""} across {receipt.transactionCount} transactions
-                  {receipt.windowStart ? ` since ${receipt.windowStart}` : ""}.{" "}
-                {confirmed ? `${confirmed} confirmed.` : "Tell us which ones are real."} Every amount opens to the charges behind it.
-              </Text>
-            </Panel>
+            <ReceiptCard
+              leaks={receipt.leaks}
+              total={receipt.totalAnnualImpact}
+              grade={receipt.grade}
+              number={(receipt.lastScanAt ?? "").slice(0, 10).replaceAll("-", "") || "000000"}
+              subtitle={`${receipt.transactionCount} transactions${receipt.windowStart ? ` since ${receipt.windowStart}` : ""}${newCount ? ` · ${newCount} new` : ""}`}
+              onOpen={openLeak}
+              edgeColor={theme.colors.background}
+            />
 
             {receipt.nextMove && (
               <Panel tone="yellow" onPress={() => openLeak(receipt.nextMove!.leakId)}>
                 <Overline color={t.yellow.fg}>ONE NEXT MOVE</Overline>
-                <Text variant="titleMedium" style={{ fontWeight: "700", color: t.yellow.fg }}>
+                <Text variant="titleMedium" style={{ fontFamily: font.bold, color: t.yellow.fg }}>
                   {receipt.nextMove.title}
                 </Text>
-                <Text style={{ color: t.yellow.fg, fontWeight: "700" }}>Saves {money(receipt.nextMove.savesPerYear)} a year</Text>
+                <Text style={{ color: t.yellow.fg, fontFamily: font.bold }}>Saves {money(receipt.nextMove.savesPerYear)} a year</Text>
               </Panel>
             )}
 
@@ -200,7 +192,7 @@ export default function Receipt() {
               <Card mode="contained" style={{ backgroundColor: theme.colors.tertiaryContainer }}>
                 <Card.Title
                   title={`${money(receipt.savedPerYear)} / year saved`}
-                  titleStyle={{ color: theme.colors.onTertiaryContainer, fontWeight: "700" }}
+                  titleStyle={{ color: theme.colors.onTertiaryContainer, fontFamily: font.bold }}
                   subtitle={stoppedLabel(receipt.resolved.filter((l) => l.verdict === "confirmed").length)}
                   subtitleStyle={{ color: theme.colors.onTertiaryContainer }}
                   left={(p) => <List.Icon {...p} icon="party-popper" color={theme.colors.onTertiaryContainer} />}
@@ -214,6 +206,11 @@ export default function Receipt() {
                   ? `Last scanned ${receipt.lastScanAt.replace(" ", " at ")} UTC${receipt.lastScanComplete ? "" : " (some accounts unavailable)"}. Pull down to scan again.`
                   : `From your statement scan on ${receipt.lastScanAt.slice(0, 10)}. Connect a bank to keep it up to date.`}
               </Text>
+            )}
+            {receipt.leaks.length > 0 && (
+              <SectionTitle>
+                {confirmed ? `Sort the rest · ${confirmed} confirmed` : "Tell Looni which are real"}
+              </SectionTitle>
             )}
           </View>
         }
@@ -269,7 +266,7 @@ function BillsTeaser({ bills }: { bills: Bills }) {
     <Card mode="outlined" onPress={() => router.push("/bills")}>
       <Card.Title
         title={late ? `${late} bill${late === 1 ? "" : "s"} running late` : next ? `${next.name} ${inDaysLabel(next.inDays)}` : "Your bills"}
-        titleStyle={{ fontWeight: "700", color: late ? theme.colors.error : theme.colors.onSurface }}
+        titleStyle={{ fontFamily: font.bold, color: late ? theme.colors.error : theme.colors.onSurface }}
         subtitleNumberOfLines={2}
         subtitle={`${shown.length} bills · about ${money(bills.monthlyTotal)}/month${bills.coverage.payday ? ` · payday ${inDaysLabel(Math.round((Date.parse(bills.coverage.payday.date) - Date.parse(bills.today)) / 86_400_000))}` : ""}`}
         left={(p) => <List.Icon {...p} icon="calendar-clock" color={late ? theme.colors.error : theme.colors.primary} />}

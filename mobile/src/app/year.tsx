@@ -8,6 +8,7 @@ import { Overline } from "../components/ui";
 import { api } from "../lib/api";
 import { money } from "../lib/format";
 import type { YearReceipt } from "../lib/types";
+import { font } from "../theme";
 
 /** "The receipt people screenshot": what your banks charged you this year. No account numbers, no bank names. */
 export default function YearReceiptScreen() {
@@ -68,7 +69,7 @@ export default function YearReceiptScreen() {
           {receipt.lines.length === 0 && <Text style={{ color: "#6C6A76" }}>Nothing yet this year. Scan a statement or connect a bank.</Text>}
           <View style={styles.rule} />
           {receipt.fixedCount > 0 && (
-            <Text style={{ color: "#12805A", fontWeight: "800" }}>
+            <Text style={{ color: "#12805A", fontFamily: font.heavy }}>
               ✓ Looni fixed {allFixed ? "all " : ""}
               {receipt.fixedCount} · {money(receipt.fixedAmount, "CAD", 0)} back
             </Text>
@@ -93,9 +94,9 @@ const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
   container: { padding: 20, gap: 16, paddingBottom: 40 },
   receipt: { backgroundColor: "#FFFFFF", borderRadius: 22, padding: 22, gap: 10, alignItems: "center" },
-  total: { fontSize: 52, fontWeight: "800", color: "#C2410C", letterSpacing: -2, fontVariant: ["tabular-nums"] },
+  total: { fontSize: 52, fontFamily: font.display, color: "#C2410C", letterSpacing: -1, fontVariant: ["tabular-nums"] },
   rule: { alignSelf: "stretch", borderTopWidth: 2, borderStyle: "dashed", borderColor: "#ECEAF2" },
   line: { alignSelf: "stretch", flexDirection: "row", justifyContent: "space-between", gap: 12 },
-  lineTitle: { flex: 1, color: "#14141A", fontWeight: "600" },
-  lineAmount: { color: "#14141A", fontWeight: "800", fontVariant: ["tabular-nums"] },
+  lineTitle: { flex: 1, color: "#14141A", fontFamily: font.semibold },
+  lineAmount: { color: "#14141A", fontFamily: font.heavy, fontVariant: ["tabular-nums"] },
 });

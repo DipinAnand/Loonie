@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { Text, useTheme } from "react-native-paper";
-import { brand } from "../theme";
+import { brand, font } from "../theme";
 
 /** Rounded white card, the site's basic surface. */
 export function Panel({ children, style, onPress, tone = "plain" }: { children: ReactNode; style?: StyleProp<ViewStyle>; onPress?: () => void; tone?: Tone }) {
@@ -59,7 +59,7 @@ export function Pill({ label, tone = "lavender" }: { label: string; tone?: Tone 
 export function Figure({ children, size = 48, color }: { children: ReactNode; size?: number; color?: string }) {
   const theme = useTheme();
   return (
-    <Text style={{ fontSize: size, lineHeight: size * 1.08, fontWeight: "800", letterSpacing: -size / 28, color: color ?? theme.colors.onSurface, fontVariant: ["tabular-nums"] }}>
+    <Text style={{ fontSize: size, lineHeight: size * 1.12, fontFamily: font.display, letterSpacing: -size / 40, color: color ?? theme.colors.onSurface, fontVariant: ["tabular-nums"] }}>
       {children}
     </Text>
   );
@@ -68,7 +68,7 @@ export function Figure({ children, size = 48, color }: { children: ReactNode; si
 export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <View style={styles.sectionTitle}>
-      <Text variant="titleLarge" style={{ fontWeight: "800" }}>
+      <Text variant="titleLarge" style={{ fontFamily: font.display, fontSize: 22 }}>
         {children}
       </Text>
       {action}
@@ -90,9 +90,9 @@ export const gradeTone: Record<string, Tone> = { A: "green", B: "lavender", C: "
 
 const styles = StyleSheet.create({
   panel: { borderRadius: 24, borderWidth: 1, padding: 18, gap: 10 },
-  overline: { fontSize: 12, fontWeight: "800", letterSpacing: 1 },
+  overline: { fontSize: 12, fontFamily: font.heavy, letterSpacing: 1 },
   pill: { borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4, alignSelf: "flex-start" },
-  pillText: { fontSize: 12, fontWeight: "800" },
+  pillText: { fontSize: 12, fontFamily: font.heavy },
   sectionTitle: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 8 },
   bar: { height: 10, borderRadius: 999, overflow: "hidden" },
   barFill: { height: "100%", borderRadius: 999 },

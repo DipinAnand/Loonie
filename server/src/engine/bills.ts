@@ -105,16 +105,21 @@ export function occurrences(bill: Bill, from: string, to: string): string[] {
   return out;
 }
 
+/** Each payday moved to its next date on or after `today` (the plan may be days old). */
+export function upcomingPaydays(plan: BillPlan, today: string): Payday[] {
+  return plan.paydays
+    .map((p) => {
+      const { days } = cadenceSpacing(p.cadence);
+      let d = p.nextDate;
+      while (d < today) d = addDays(d, days);
+      return { ...p, nextDate: d };
+    })
+    .sort((a, b) => a.nextDate.localeCompare(b.nextDate));
+}
+
 /** Next payday on or after `today`, rolling a stale schedule forward. */
 export function nextPayday(plan: BillPlan, today: string): Payday | null {
-  let best: Payday | null = null;
-  for (const p of plan.paydays) {
-    const { days } = cadenceSpacing(p.cadence);
-    let d = p.nextDate;
-    while (d < today) d = addDays(d, days);
-    if (!best || d < best.nextDate) best = { ...p, nextDate: d };
-  }
-  return best;
+  return upcomingPaydays(plan, today)[0] ?? null;
 }
 
 export interface Coverage {

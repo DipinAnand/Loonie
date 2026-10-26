@@ -7,6 +7,7 @@ import { Figure, Overline, Panel, Pill, tones } from "../../components/ui";
 import { api } from "../../lib/api";
 import { money, shortDate } from "../../lib/format";
 import type { Leak, Verdict } from "../../lib/types";
+import { font } from "../../theme";
 
 const MONTH = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
 
@@ -69,7 +70,7 @@ export default function Evidence() {
     <>
       <ScrollView contentContainerStyle={styles.container}>
         <View style={{ gap: 6 }}>
-          <Text variant="headlineSmall" style={{ fontWeight: "800" }}>
+          <Text variant="headlineSmall" style={{ fontFamily: font.display }}>
             {leak.title}
           </Text>
           <View style={styles.row}>
@@ -95,7 +96,7 @@ export default function Evidence() {
                 </View>
               ))}
             </View>
-            <Text style={{ fontWeight: "800", fontVariant: ["tabular-nums"] }}>
+            <Text style={{ fontFamily: font.heavy, fontVariant: ["tabular-nums"] }}>
               {spread
                 ? `${money(total)} of foreign-currency spend × about 2.5% = ${money(total * 0.025)}`
                 : sameAmount
@@ -111,7 +112,7 @@ export default function Evidence() {
               {[...charges].reverse().slice(0, 6).map((c, i) => (
                 <View key={c.date + i} style={[styles.row, styles.txn, { borderColor: theme.colors.outlineVariant }]}>
                   <Text>{shortDate(c.date)}</Text>
-                  <Text style={{ fontWeight: "800", fontVariant: ["tabular-nums"] }}>−{money(c.amount)}</Text>
+                  <Text style={{ fontFamily: font.heavy, fontVariant: ["tabular-nums"] }}>−{money(c.amount)}</Text>
                 </View>
               ))}
             </View>
@@ -121,7 +122,7 @@ export default function Evidence() {
         {leak.meta.fix && (
           <Panel tone="lavender">
             <Overline color={t.lavender.fg}>WHAT TO DO</Overline>
-            <Text style={{ color: t.lavender.fg, fontWeight: "600" }}>{leak.meta.fix}</Text>
+            <Text style={{ color: t.lavender.fg, fontFamily: font.semibold }}>{leak.meta.fix}</Text>
           </Panel>
         )}
 
@@ -161,7 +162,7 @@ const styles = StyleSheet.create({
   chart: { flexDirection: "row", alignItems: "flex-end", gap: 6, height: 92 },
   barCol: { flex: 1, alignItems: "center", gap: 4 },
   bar: { width: "100%", borderRadius: 6 },
-  barLabel: { fontSize: 11, fontWeight: "700" },
+  barLabel: { fontSize: 11, fontFamily: font.bold },
   txn: { paddingVertical: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   actions: { flexDirection: "row", gap: 10 },
   cta: { paddingVertical: 6 },

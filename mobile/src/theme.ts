@@ -1,4 +1,4 @@
-import { MD3DarkTheme, MD3LightTheme, type MD3Theme } from "react-native-paper";
+import { configureFonts, MD3DarkTheme, MD3LightTheme, type MD3Theme } from "react-native-paper";
 
 // Looni palette from loonifinancial.com: lavender (brand), loonie yellow (money, next moves),
 // green (saved, verified), burnt orange (leaks). Text-on-white shades all pass 4.5:1.
@@ -20,8 +20,40 @@ export const brand = {
   soft: "#F6F5FB",
 };
 
+/**
+ * The site's type: Bricolage Grotesque for headlines and money, Plus Jakarta Sans for everything else.
+ * Custom fonts pick their weight by file, not by fontWeight, so styles name the file directly
+ * (`fontFamily: font.heavy`) instead of setting fontWeight.
+ */
+export const font = {
+  regular: "PlusJakartaSans_400Regular",
+  medium: "PlusJakartaSans_500Medium",
+  semibold: "PlusJakartaSans_600SemiBold",
+  bold: "PlusJakartaSans_700Bold",
+  heavy: "PlusJakartaSans_800ExtraBold",
+  display: "BricolageGrotesque_800ExtraBold",
+  displayBold: "BricolageGrotesque_700Bold",
+} as const;
+
+// Paper's type scale on the site's fonts. fontWeight stays "400" so browsers don't fake-bold a face that is already bold.
+const fonts = configureFonts({
+  config: Object.fromEntries(
+    Object.entries(MD3LightTheme.fonts).map(([variant, style]) => {
+      const family = /^(display|headline)/.test(variant)
+        ? font.display
+        : /^title/.test(variant)
+          ? font.bold
+          : /^label/.test(variant)
+            ? font.semibold
+            : font.regular;
+      return [variant, { ...style, fontFamily: family, fontWeight: "400" as const }];
+    }),
+  ),
+});
+
 export const lightTheme: MD3Theme = {
   ...MD3LightTheme,
+  fonts,
   roundness: 5,
   colors: {
     ...MD3LightTheme.colors,
@@ -53,6 +85,7 @@ export const lightTheme: MD3Theme = {
 
 export const darkTheme: MD3Theme = {
   ...MD3DarkTheme,
+  fonts,
   roundness: 5,
   colors: {
     ...MD3DarkTheme.colors,

@@ -2,6 +2,7 @@ import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { Tabs } from "expo-router/js-tabs";
 import type { ComponentProps } from "react";
 import { useTheme } from "react-native-paper";
+import { font } from "../../theme";
 
 type IconName = ComponentProps<typeof MaterialCommunityIcons>["name"];
 
@@ -22,7 +23,7 @@ export default function TabsLayout() {
         tabBarActiveTintColor: theme.colors.primary,
         tabBarInactiveTintColor: theme.colors.onSurfaceVariant,
         tabBarStyle: { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.outlineVariant },
-        tabBarLabelStyle: { fontWeight: "700" },
+        tabBarLabelStyle: { fontFamily: font.bold },
         headerStyle: { backgroundColor: theme.colors.background },
         headerTintColor: theme.colors.onBackground,
         headerShadowVisible: false,

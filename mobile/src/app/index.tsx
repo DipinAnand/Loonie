@@ -4,7 +4,9 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { ActivityIndicator, Button, Text, useTheme } from "react-native-paper";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LoonMark } from "../components/LoonMark";
 import { api } from "../lib/api";
+import { brand, font } from "../theme";
 
 const POINTS = [
   { icon: "receipt-text-outline", title: "Every fee, with the receipts", body: "Plan fees, NSF charges, currency spreads and quiet price rises, each with the transactions behind it." },
@@ -38,12 +40,15 @@ export default function Welcome() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text variant="titleLarge" style={{ fontWeight: "800" }}>
-          Looni
-        </Text>
+        <View style={styles.brand}>
+          <LoonMark size={56} water={false} />
+          <Text style={styles.wordmark}>
+            Looni<Text style={{ color: brand.yellow }}>.</Text>
+          </Text>
+        </View>
         <Text variant="displaySmall" style={styles.headline}>
           Find the fees you{" "}
-          <Text variant="displaySmall" style={{ color: theme.colors.primary, fontWeight: "800" }}>
+          <Text variant="displaySmall" style={{ color: theme.colors.primary, fontFamily: font.display }}>
             never noticed.
           </Text>
         </Text>
@@ -80,8 +85,10 @@ export default function Welcome() {
 
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: "center", justifyContent: "center" },
+  brand: { flexDirection: "row", alignItems: "center", gap: 10 },
+  wordmark: { fontFamily: font.display, fontSize: 30 },
   container: { padding: 24, gap: 16 },
-  headline: { fontWeight: "800", marginTop: 24 },
+  headline: { fontFamily: font.heavy, marginTop: 24 },
   points: { gap: 20, marginTop: 16 },
   point: { flexDirection: "row", gap: 16, alignItems: "flex-start" },
   footer: { padding: 24, paddingTop: 8, gap: 4 },

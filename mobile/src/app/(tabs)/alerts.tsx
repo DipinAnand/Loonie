@@ -5,6 +5,7 @@ import { Button, SegmentedButtons, Text, useTheme } from "react-native-paper";
 import { Panel, tones, type Tone } from "../../components/ui";
 import { api } from "../../lib/api";
 import type { Alert } from "../../lib/types";
+import { font } from "../../theme";
 
 const KIND_TONE: Record<Alert["kind"], Tone> = {
   suspicious: "leak",
@@ -98,10 +99,10 @@ export default function Alerts() {
           <Panel onPress={() => open(item)} style={styles.item}>
             <View style={styles.row}>
               <View style={[styles.mark, { backgroundColor: tone.bg }]}>
-                <Text style={{ color: tone.fg, fontWeight: "800" }}>{KIND_MARK[item.kind]}</Text>
+                <Text style={{ color: tone.fg, fontFamily: font.heavy }}>{KIND_MARK[item.kind]}</Text>
               </View>
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ fontWeight: item.read ? "600" : "800" }}>{item.title}</Text>
+                <Text style={{ fontFamily: item.read ? font.semibold : font.heavy }}>{item.title}</Text>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                   {item.body}
                 </Text>

@@ -1,6 +1,6 @@
 import type { AccountBase } from "plaid";
 import { billPrefsFor, getBillPlan, saveBillPlan, type UserRow } from "./db.js";
-import { type BillPlan, billStatus, coverage } from "./engine/bills.js";
+import { type BillPlan, billStatus, coverage, upcomingPaydays } from "./engine/bills.js";
 import { round2 } from "./engine/util.js";
 import { perYear } from "./engine/recurring.js";
 import { openForUser, sealForUser } from "./keys.js";
@@ -46,7 +46,7 @@ export function billsView(plan: BillPlan, user: UserRow, today: string, balance:
     asOf: plan.asOf,
     today,
     bills,
-    paydays: plan.paydays,
+    paydays: upcomingPaydays(plan, today),
     coverage: coverage(plan, today, balance, hidden),
     monthlyTotal: round2(shown.reduce((s, b) => s + (b.amount * perYear(b.cadence)) / 12, 0)),
   };

@@ -4,6 +4,7 @@ import { Chip, HelperText, SegmentedButtons, Text, TextInput, useTheme } from "r
 import { Figure, Overline, Panel, tones } from "../components/ui";
 import { api } from "../lib/api";
 import { money } from "../lib/format";
+import { font } from "../theme";
 
 /** Inputs and outputs for each calculator in /tools. The math runs on the server (server/src/tools/calc.ts). */
 type Field = { key: string; label: string; value: number; suffix?: "$" | "%" | "mo" | "yr" };
@@ -243,7 +244,7 @@ export default function Tools() {
             .map((o) => (
               <View key={o.key} style={styles.row}>
                 <Text style={{ color: "#D8D0FA" }}>{o.label}</Text>
-                <Text style={{ color: "#FFFFFF", fontWeight: "800", fontVariant: ["tabular-nums"] }}>{show(result[o.key], o.format)}</Text>
+                <Text style={{ color: "#FFFFFF", fontFamily: font.heavy, fontVariant: ["tabular-nums"] }}>{show(result[o.key], o.format)}</Text>
               </View>
             ))}
         </Panel>
@@ -257,7 +258,7 @@ export default function Tools() {
               <Text style={{ color: t.green.fg, flex: 1 }}>
                 {o.label} · {o.apr.toFixed(2)}%
               </Text>
-              <Text style={{ color: t.green.fg, fontWeight: "800" }}>{o.saves && o.saves > 0 ? `−${money(o.saves, "CAD", 0)}` : "same"}</Text>
+              <Text style={{ color: t.green.fg, fontFamily: font.heavy }}>{o.saves && o.saves > 0 ? `−${money(o.saves, "CAD", 0)}` : "same"}</Text>
             </View>
           ))}
         </Panel>

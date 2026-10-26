@@ -4,6 +4,7 @@ import { ScrollView, StyleSheet, View } from "react-native";
 import { ActivityIndicator, Button, Card, HelperText, List, Text, useTheme } from "react-native-paper";
 import { api, ApiError } from "../lib/api";
 import { isPlaidLinkAvailable, openPlaidLink } from "../lib/plaidLink";
+import { font } from "../theme";
 
 type Phase = { name: "idle" } | { name: "linking" } | { name: "scanning"; bank?: string } | { name: "error"; message: string };
 
@@ -69,7 +70,7 @@ export default function Connect() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text variant="headlineSmall" style={{ fontWeight: "700" }}>
+      <Text variant="headlineSmall" style={{ fontFamily: font.display }}>
         Connect securely with Plaid
       </Text>
       <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>

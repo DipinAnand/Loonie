@@ -6,6 +6,7 @@ import { Figure, Overline, Panel, Pill, tones } from "../components/ui";
 import { api } from "../lib/api";
 import { money, shortDate } from "../lib/format";
 import type { Overview } from "../lib/types";
+import { font } from "../theme";
 
 const CHART_HEIGHT = 140;
 
@@ -35,7 +36,7 @@ export default function ForecastScreen() {
   if (!f) {
     return (
       <ScrollView contentContainerStyle={styles.container}>
-        <Text variant="headlineSmall" style={{ fontWeight: "800" }}>
+        <Text variant="headlineSmall" style={{ fontFamily: font.display }}>
           Know before it bounces
         </Text>
         <Text style={{ color: theme.colors.onSurfaceVariant }}>
@@ -56,7 +57,7 @@ export default function ForecastScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text variant="headlineSmall" style={{ fontWeight: "800" }}>
+      <Text variant="headlineSmall" style={{ fontFamily: font.display }}>
         Know before it bounces
       </Text>
       <Text style={{ color: theme.colors.onSurfaceVariant }}>Only possible because Looni sees every account.</Text>
@@ -94,7 +95,7 @@ export default function ForecastScreen() {
             {shortDate(f.series[0].date)}
           </Text>
           {f.payday && (
-            <Text variant="bodySmall" style={{ color: theme.colors.tertiary, fontWeight: "700" }}>
+            <Text variant="bodySmall" style={{ color: theme.colors.tertiary, fontFamily: font.bold }}>
               Payday {shortDate(f.payday)}
             </Text>
           )}
@@ -107,14 +108,14 @@ export default function ForecastScreen() {
       {f.bounce ? (
         <Panel tone="leak">
           <Overline color={t.leak.fg}>{shortDate(f.bounce.date).toUpperCase()}</Overline>
-          <Text variant="titleMedium" style={{ fontWeight: "800", color: t.leak.fg }}>
+          <Text variant="titleMedium" style={{ fontFamily: font.heavy, color: t.leak.fg }}>
             {f.bounce.before.length ? `${f.bounce.before.join(", ")} land before payday.` : "Your balance dips below zero."}
           </Text>
           <Text style={{ color: t.leak.fg }}>
             {f.cover ? `Your ${f.cover.name} can cover it.` : "Move money in before then, or ask for a payment date change."}
           </Text>
           {f.cover && (
-            <Text style={{ color: t.leak.fg, fontWeight: "800" }}>
+            <Text style={{ color: t.leak.fg, fontFamily: font.heavy }}>
               Move {money(f.cover.amount, "CAD", 0)} from {f.cover.name} to skip an NSF fee.
             </Text>
           )}

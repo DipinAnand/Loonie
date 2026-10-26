@@ -6,6 +6,7 @@ import { LoonMark } from "../../components/LoonMark";
 import { Bar, Figure, Overline, Panel, Pill, SectionTitle, tones } from "../../components/ui";
 import { api } from "../../lib/api";
 import type { Badge, Home, Quest, Track } from "../../lib/types";
+import { font } from "../../theme";
 
 const STAGES: { level: Home["level"]; label: string }[] = [
   { level: "egg", label: "Egg" },
@@ -52,12 +53,12 @@ export default function Loon() {
           <Figure size={28} color={t.lavender.fg}>
             {home ? `${STAGES[stageIndex].label} · ${home.loonies} loonies` : " "}
           </Figure>
-          <Text style={{ color: t.lavender.fg, fontWeight: "700" }}>Fix a leak, your loon grows. One minute a week.</Text>
+          <Text style={{ color: t.lavender.fg, fontFamily: font.bold }}>Fix a leak, your loon grows. One minute a week.</Text>
           <View style={styles.stages}>
             {STAGES.map((s, i) => (
               <View key={s.level} style={{ flex: 1, gap: 6, alignItems: "center" }}>
                 <Bar value={i < stageIndex ? 1 : i === stageIndex ? (home?.next ? home.loonies / home.next.at : 1) : 0} track={theme.dark ? "#3B3375" : "#D8D0FA"} />
-                <Text style={{ fontSize: 12, fontWeight: i === stageIndex ? "800" : "600", color: i <= stageIndex ? t.lavender.fg : theme.colors.onSurfaceVariant }}>{s.label}</Text>
+                <Text style={{ fontSize: 12, fontFamily: i === stageIndex ? font.heavy : font.semibold, color: i <= stageIndex ? t.lavender.fg : theme.colors.onSurfaceVariant }}>{s.label}</Text>
               </View>
             ))}
           </View>
@@ -66,7 +67,7 @@ export default function Loon() {
         {home && (
           <Panel tone={home.hunt.remaining ? "yellow" : "green"}>
             <Overline color={home.hunt.remaining ? t.yellow.fg : t.green.fg}>THIS WEEK'S LEAK CHECK</Overline>
-            <Text variant="titleMedium" style={{ fontWeight: "800", color: home.hunt.remaining ? t.yellow.fg : t.green.fg }}>
+            <Text variant="titleMedium" style={{ fontFamily: font.heavy, color: home.hunt.remaining ? t.yellow.fg : t.green.fg }}>
               {home.hunt.remaining ? `${home.hunt.remaining} of ${home.hunt.total} leaks to sort` : "Done for the week"}
             </Text>
             <Text style={{ color: home.hunt.remaining ? t.yellow.fg : t.green.fg }}>
@@ -84,7 +85,7 @@ export default function Loon() {
         {quests.map((q) => (
           <Panel key={q.id} tone={q.status === "completed" ? "green" : "plain"}>
             <View style={styles.row}>
-              <Text variant="titleMedium" style={{ fontWeight: "700", flex: 1, color: q.status === "completed" ? t.green.fg : theme.colors.onSurface }}>
+              <Text variant="titleMedium" style={{ fontFamily: font.bold, flex: 1, color: q.status === "completed" ? t.green.fg : theme.colors.onSurface }}>
                 {q.title}
               </Text>
               <Pill label={q.status === "completed" ? "Done" : `+${q.reward}`} tone={q.status === "completed" ? "green" : "yellow"} />
@@ -103,11 +104,11 @@ export default function Loon() {
         {tracks.map((tr) => (
           <Panel key={tr.id} onPress={() => router.push({ pathname: "/track/[id]", params: { id: tr.id } })}>
             <Overline>{tr.id === "newcomers" ? "NEWCOMER TRACK" : "STUDENT TRACK"}</Overline>
-            <Text variant="titleMedium" style={{ fontWeight: "800" }}>
+            <Text variant="titleMedium" style={{ fontFamily: font.heavy }}>
               {tr.title}
             </Text>
             <Bar value={tr.done / tr.total} />
-            <Text style={{ color: theme.colors.primary, fontWeight: "700" }}>
+            <Text style={{ color: theme.colors.primary, fontFamily: font.bold }}>
               {tr.done} of {tr.total} · {tr.level} · {tr.done === tr.total ? "complete" : "start the track →"}
             </Text>
           </Panel>
@@ -117,7 +118,7 @@ export default function Loon() {
         <View style={styles.badges}>
           {badges.map((b) => (
             <View key={b.id} style={[styles.badge, { backgroundColor: b.unlockedAt ? t.yellow.bg : theme.colors.surfaceVariant, opacity: b.unlockedAt ? 1 : 0.6 }]} accessibilityLabel={`${b.title}${b.unlockedAt ? ", unlocked" : ", locked"}`}>
-              <Text style={{ fontWeight: "800", color: b.unlockedAt ? t.yellow.fg : theme.colors.onSurfaceVariant, textAlign: "center" }}>{b.title}</Text>
+              <Text style={{ fontFamily: font.heavy, color: b.unlockedAt ? t.yellow.fg : theme.colors.onSurfaceVariant, textAlign: "center" }}>{b.title}</Text>
               <Text variant="bodySmall" style={{ color: b.unlockedAt ? t.yellow.fg : theme.colors.onSurfaceVariant, textAlign: "center" }}>
                 {b.description}
               </Text>

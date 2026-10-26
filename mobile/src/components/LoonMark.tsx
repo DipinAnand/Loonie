@@ -1,21 +1,40 @@
 import { View } from "react-native";
 
-/** The loon, drawn with plain views (no image asset needed): body, head, beak, red eye, white necklace. */
-export function LoonMark({ size = 72 }: { size?: number }) {
+const YELLOW = "#FFC82E";
+const BELLY = "#FFE38A";
+const WING = "#F0AE14";
+const TAIL = "#9B8CF5";
+const BEAK = "#FF8A1F";
+const INK = "#14141A";
+
+/**
+ * The golden loon from the brand video, drawn with plain views (no image asset):
+ * lavender tail, round yellow body and head, darker wing, orange beak, and a
+ * ripple of water underneath. `water={false}` drops the ripple for small marks.
+ */
+export function LoonMark({ size = 72, water = true }: { size?: number; water?: boolean }) {
   const s = size / 120;
-  const ink = "#14141A";
+  const box = (x: number, y: number, w: number, h: number, color: string, extra: object = {}) => ({
+    position: "absolute" as const,
+    left: x * s,
+    top: y * s,
+    width: w * s,
+    height: h * s,
+    borderRadius: (Math.min(w, h) / 2) * s,
+    backgroundColor: color,
+    ...extra,
+  });
   return (
-    <View style={{ width: size, height: size * 0.75 }} accessible accessibilityLabel="Your loon">
-      <View style={{ position: "absolute", left: 16 * s, top: 46 * s, width: 76 * s, height: 28 * s, borderRadius: 14 * s, backgroundColor: ink }} />
-      <View style={{ position: "absolute", left: 76 * s, top: 30 * s, width: 14 * s, height: 26 * s, backgroundColor: ink, transform: [{ rotate: "12deg" }] }} />
-      <View style={{ position: "absolute", left: 76 * s, top: 22 * s, width: 24 * s, height: 24 * s, borderRadius: 12 * s, backgroundColor: ink }} />
-      <View style={{ position: "absolute", left: 98 * s, top: 31 * s, width: 18 * s, height: 6 * s, borderRadius: 3 * s, backgroundColor: ink }} />
-      <View style={{ position: "absolute", left: 89 * s, top: 29 * s, width: 5 * s, height: 5 * s, borderRadius: 3 * s, backgroundColor: "#C2410C" }} />
-      <View style={{ position: "absolute", left: 79 * s, top: 46 * s, width: 13 * s, height: 2 * s, backgroundColor: "#FFFFFF" }} />
-      {[34, 44, 54, 39, 49, 59].map((x, i) => (
-        <View key={i} style={{ position: "absolute", left: x * s, top: (i < 3 ? 52 : 60) * s, width: 4 * s, height: 4 * s, borderRadius: 2 * s, backgroundColor: "#FFFFFF" }} />
-      ))}
-      <View style={{ position: "absolute", left: 4 * s, top: 80 * s, width: 112 * s, height: 3 * s, borderRadius: 2 * s, backgroundColor: "#B8A9E8" }} />
+    <View style={{ width: size, height: size * 0.78 }} accessible accessibilityRole="image" accessibilityLabel="Looni's loon">
+      <View style={box(4, 26, 38, 16, TAIL, { transform: [{ rotate: "-28deg" }] })} />
+      <View style={box(16, 34, 78, 42, YELLOW)} />
+      <View style={box(34, 54, 52, 20, BELLY)} />
+      <View style={box(30, 40, 40, 20, WING, { transform: [{ rotate: "-12deg" }] })} />
+      <View style={box(64, 6, 38, 38, YELLOW)} />
+      <View style={box(96, 24, 20, 10, BEAK, { transform: [{ rotate: "8deg" }] })} />
+      <View style={box(82, 15, 11, 11, "#FFFFFF")} />
+      <View style={box(86, 18, 6, 6, INK)} />
+      {water && <View style={box(6, 84, 108, 4, "#B8A9E8")} />}
     </View>
   );
 }

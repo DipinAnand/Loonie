@@ -5,6 +5,7 @@ import { Checkbox, Snackbar, Text, useTheme } from "react-native-paper";
 import { Bar, Overline, Panel, Pill } from "../../components/ui";
 import { api } from "../../lib/api";
 import type { Track } from "../../lib/types";
+import { font } from "../../theme";
 
 /** Newcomer or student track: twelve tasks, one a week, in the order that works. */
 export default function TrackScreen() {
@@ -40,7 +41,7 @@ export default function TrackScreen() {
   return (
     <>
       <ScrollView contentContainerStyle={styles.container}>
-        <Text variant="headlineSmall" style={{ fontWeight: "800" }}>
+        <Text variant="headlineSmall" style={{ fontFamily: font.display }}>
           {track.title}
         </Text>
         <Text style={{ color: theme.colors.onSurfaceVariant }}>{track.subtitle}</Text>
@@ -59,14 +60,14 @@ export default function TrackScreen() {
             <View style={styles.task}>
               <Checkbox.Android status={task.done ? "checked" : "unchecked"} disabled={task.auto} onPress={() => toggle(task.id, !task.done)} />
               <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ fontWeight: "800" }}>
+                <Text style={{ fontFamily: font.heavy }}>
                   Week {task.week}. {task.title}
                 </Text>
                 <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
                   {task.why}
                 </Text>
                 {task.auto && !task.done && (
-                  <Text variant="bodySmall" style={{ color: theme.colors.primary, fontWeight: "700" }} onPress={() => router.push(task.id === "first_scan" ? "/import" : "/receipt")}>
+                  <Text variant="bodySmall" style={{ color: theme.colors.primary, fontFamily: font.bold }} onPress={() => router.push(task.id === "first_scan" ? "/import" : "/receipt")}>
                     Looni ticks this when you do it →
                   </Text>
                 )}

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { billStatus, buildBillPlan, coverage, nextPayday, occurrences } from "./bills.js";
+import { billStatus, buildBillPlan, coverage, nextPayday, occurrences, upcomingPaydays } from "./bills.js";
 import { leakyScenario } from "./scenario.js";
 import type { Txn } from "./types.js";
 import { addDays } from "./util.js";
@@ -104,5 +104,13 @@ describe("coverage", () => {
     const noPay = { ...plan, paydays: [] };
     assert.equal(coverage(noPay, AS_OF, 1000).until, addDays(AS_OF, 14));
     assert.equal(coverage(noPay, AS_OF, 1000).payday, null);
+  });
+});
+
+describe("upcomingPaydays", () => {
+  it("rolls a payday the plan saw days ago forward to the next one", () => {
+    const plan = { asOf: "2026-10-20", bills: [], paydays: [{ name: "Payroll", cadence: "biweekly" as const, amount: 2150, nextDate: "2026-10-23", lastDate: "2026-10-09" }] };
+    assert.equal(upcomingPaydays(plan, "2026-10-26")[0].nextDate, "2026-11-06");
+    assert.equal(upcomingPaydays(plan, "2026-10-21")[0].nextDate, "2026-10-23");
   });
 });
