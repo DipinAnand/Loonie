@@ -10,6 +10,14 @@ import { money } from "../lib/format";
 import type { YearReceipt } from "../lib/types";
 import { font } from "../theme";
 
+/** The card is made to be shared, so merchant-specific lines show only the kind of charge. Fee titles are already generic. */
+const KIND_LABEL: Partial<Record<YearReceipt["lines"][number]["kind"], string>> = {
+  subscription: "Subscription",
+  duplicate: "Double charge",
+  price_hike: "Price rise",
+};
+const shareLabel = (l: YearReceipt["lines"][number]) => KIND_LABEL[l.kind] ?? l.title;
+
 /** "The receipt people screenshot": what your banks charged you this year. No account numbers, no bank names. */
 export default function YearReceiptScreen() {
   const theme = useTheme();
@@ -60,7 +68,7 @@ export default function YearReceiptScreen() {
           {receipt.lines.slice(0, 8).map((l) => (
             <View key={l.id} style={styles.line}>
               <Text style={styles.lineTitle} numberOfLines={1}>
-                {l.title.replace(/\s\((weekly|biweekly|monthly|quarterly|annual)\)$/, "")}
+                {shareLabel(l)}
                 {l.fixed ? "  ✓" : ""}
               </Text>
               <Text style={styles.lineAmount}>{money(l.amount, "CAD", 0)}</Text>

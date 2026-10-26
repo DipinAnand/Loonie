@@ -1,12 +1,17 @@
 /**
  * Records the Looni demo video from the web build, with captions.
  *
- *   1. Server: cd server && npm run dev        (Plaid Sandbox keys in server/.env)
+ *   1. Server: cd server && npm run dev        (any Plaid keys; the demo doesn't call Plaid)
  *   2. Web app: cd mobile && EXPO_PUBLIC_API_URL=http://localhost:4000 npx expo export -p web --output-dir dist
  *      then serve mobile/dist on port 8090 with a single-page fallback (any static server works)
  *   3. node scripts/record-demo.mjs [out-dir]    → out-dir/looni-demo.mp4 (needs ffmpeg)
  *
- * Playwright must be installed (npm i -g playwright, or set PLAYWRIGHT_MODULE to its path).
+ * No bank connection needed: the demo scans a year of statement data (written fresh, dated up to today)
+ * through the real file picker. Net worth and the 30-day forecast need live balances, so the demo
+ * shows a sample household there and says so on screen; set SAMPLE_BALANCES=0 to skip that.
+ *
+ * Playwright must be installed (npm i -g playwright, or set PLAYWRIGHT_MODULE to its path;
+ * set CHROMIUM_PATH to use a specific Chromium build).
  */
 import { execFileSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -18,6 +23,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 
 const APP = process.env.APP_URL || "http://localhost:8090";
 const OUT = resolve(process.argv[2] || "demo-out");
+const SAMPLE_BALANCES = process.env.SAMPLE_BALANCES !== "0";
 // A 390×844 phone, rendered at 2× by zooming the page (Chrome's screencast only sends CSS-pixel frames).
 const W = 390;
 const H = 844;
@@ -26,7 +32,72 @@ const SCALE = 2;
 rmSync(join(OUT, "raw"), { recursive: true, force: true });
 mkdirSync(join(OUT, "raw"), { recursive: true });
 
-const browser = await chromium.launch();
+// ---- demo data ------------------------------------------------------------------
+
+const DAY = 86_400_000;
+const iso = (t) => new Date(t).toISOString().slice(0, 10);
+const today = Date.parse(`${iso(Date.now())}T00:00:00Z`);
+
+/** A year of a Canadian chequing account with the leaks from loonifinancial.com's sample receipt. */
+function demoStatement() {
+  const rows = ["Date,Description,Withdrawals,Deposits"];
+  const add = (t, desc, out, inn = "") => t <= today && rows.push(`${iso(t)},${desc},${out},${inn}`);
+  for (let m = 12; m >= 0; m--) {
+    const base = new Date(today);
+    const at = (day) => Date.UTC(base.getUTCFullYear(), base.getUTCMonth() - m, day);
+    add(at(1), "MONTHLY PLAN FEE", "16.95");
+    add(at(2), "MORTGAGE PAYMENT", "2410.00");
+    add(at(5), "STREAMCO MONTHLY", at(5) >= today - 220 * DAY ? "19.99" : "16.99");
+    add(at(12), "PAD GOODLIFE FITNESS", "64.99");
+    add(at(18), "HYDRO ONE", (120 + (m % 4) * 9.5).toFixed(2));
+    for (const d of [3, 11, 19, 26]) add(at(d), "LOBLAWS #1032", (40 + ((m * 7 + d) % 13) * 9.31).toFixed(2));
+  }
+  for (let t = today - 364 * DAY; t <= today; t += 14 * DAY) add(t, "PAYROLL DEPOSIT ACME", "", "2150.00");
+  add(today - 280 * DAY, "NSF FEE", "48.00");
+  add(today - 200 * DAY, "NSF FEE", "48.00");
+  add(today - 110 * DAY, "HOTEL MIAMI USD 730.00 @ 1.3699", "1000.00");
+  add(today - 109 * DAY, "UBER USD 31.00 @ 1.3710", "42.50");
+  add(today - 36 * DAY, "RESTAURANT LE MARCHE", "64.20");
+  add(today - 36 * DAY, "RESTAURANT LE MARCHE", "64.20");
+  return rows.join("\n");
+}
+
+const statementPath = join(OUT, "chequing-statement.csv");
+writeFileSync(statementPath, demoStatement());
+
+/** A sample household for the screens that need live balances (Plaid isn't connected in the demo). */
+function sampleOverview() {
+  const accounts = [
+    { id: "chq", name: "Chequing · Red bank", type: "depository", subtype: "checking", balance: 3240, available: 3240 },
+    { id: "sav", name: "Savings · Green bank", type: "depository", subtype: "savings", balance: 8900, available: 8900 },
+    { id: "visa", name: "Visa · Blue bank", type: "credit", subtype: "credit card", balance: 1180, available: null },
+    { id: "inv", name: "TFSA + RRSP · Investments", type: "investment", subtype: "tfsa", balance: 18400, available: null },
+    { id: "mtg", name: "Mortgage · Purple bank", type: "loan", subtype: "mortgage", balance: 412000, available: null },
+  ];
+  const series = Array.from({ length: 30 }, (_, i) => ({
+    date: iso(today + i * DAY),
+    balance: i < 6 ? 3240 - i * 60 : i < 11 ? -455 + (i - 6) * 3 : 1700 - (i - 11) * 30,
+  }));
+  return {
+    complete: true,
+    accounts,
+    netWorth: { assets: 30540, debts: 413180, net: -382640 },
+    forecast: {
+      days: 30,
+      series,
+      low: { date: iso(today + 6 * DAY), balance: -455 },
+      bounce: { date: iso(today + 6 * DAY), shortBy: 455, before: ["Mortgage Payment", "Hydro One", "Goodlife Fitness"] },
+      cover: { accountId: "sav", name: "Savings · Green bank", amount: 455 },
+      safeToSpend: 0,
+      payday: iso(today + 11 * DAY),
+    },
+    leaksPerYear: 0,
+    grade: null,
+    renewal: null,
+  };
+}
+
+const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 const context = await browser.newContext({ viewport: { width: W * SCALE, height: H * SCALE }, colorScheme: "light" });
 const page = await context.newPage();
 await page.addInitScript((zoom) => document.addEventListener("DOMContentLoaded", () => (document.documentElement.style.zoom = zoom)), String(SCALE));
@@ -53,22 +124,23 @@ async function installOverlays() {
     const style = document.createElement("style");
     style.textContent = `
       #demo-caption { position: fixed; left: 14px; right: 14px; bottom: 26px; z-index: 99999; pointer-events: none;
-        background: rgba(30, 27, 46, 0.92); color: #fff; border-radius: 16px; padding: 14px 18px;
-        font: 600 17px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center;
+        background: rgba(20, 20, 26, 0.92); color: #fff; border-radius: 18px; padding: 14px 18px;
+        font: 17px/1.35 PlusJakartaSans_700Bold, system-ui, sans-serif; text-align: center;
         box-shadow: 0 8px 24px rgba(0,0,0,.25); opacity: 0; transform: translateY(12px); transition: opacity .35s, transform .35s; }
       #demo-caption.on { opacity: 1; transform: none; }
       #demo-caption.top { bottom: auto; top: 64px; }
-      #demo-caption small { display: block; font-weight: 500; font-size: 14px; opacity: .8; margin-top: 4px; }
+      #demo-caption small { display: block; font-family: PlusJakartaSans_500Medium, system-ui, sans-serif; font-size: 14px; opacity: .8; margin-top: 4px; }
       #demo-card { position: fixed; inset: 0; z-index: 100000; display: flex; flex-direction: column; justify-content: center;
-        align-items: center; gap: 14px; padding: 32px; text-align: center; background: #5B4FD6; color: #fff;
-        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; opacity: 0; transition: opacity .5s; pointer-events: none; }
+        align-items: center; gap: 14px; padding: 32px; text-align: center; background: #4F3FD0; color: #fff;
+        font-family: PlusJakartaSans_500Medium, system-ui, sans-serif; opacity: 0; transition: opacity .5s; pointer-events: none; }
       #demo-card.on { opacity: 1; }
-      #demo-card .logo { font-size: 22px; font-weight: 700; letter-spacing: .5px; opacity: .9; }
-      #demo-card .big { font-size: 34px; font-weight: 800; line-height: 1.15; }
-      #demo-card .big em { font-style: normal; color: #F5D36B; }
+      #demo-card .logo { font: 34px BricolageGrotesque_800ExtraBold, system-ui, sans-serif; }
+      #demo-card .logo em { font-style: normal; color: #FFC82E; }
+      #demo-card .big { font: 34px/1.15 BricolageGrotesque_800ExtraBold, system-ui, sans-serif; }
+      #demo-card .big em { font-style: normal; color: #FFC82E; }
       #demo-card .sub { font-size: 17px; opacity: .9; line-height: 1.4; }
       #demo-tap { position: fixed; z-index: 99998; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%;
-        background: rgba(91, 79, 214, .35); border: 2px solid rgba(91, 79, 214, .8); pointer-events: none;
+        background: rgba(79, 63, 208, .3); border: 2px solid rgba(79, 63, 208, .85); pointer-events: none;
         transform: scale(.4); opacity: 0; transition: transform .3s, opacity .3s; }
       #demo-tap.on { transform: scale(1); opacity: 1; }`;
     document.head.appendChild(style);
@@ -173,76 +245,110 @@ async function scroll(dy, ms = 1200) {
 
 // ---- the demo -----------------------------------------------------------------
 
+if (SAMPLE_BALANCES) await context.route("**/api/overview", (route) => route.fulfill({ json: sampleOverview() }));
+
+const LOGO = `<div class="logo">Looni<em>.</em></div>`;
+const byText = (t) => page.getByText(t, { exact: true }).first();
+const tab = (name) => page.getByRole("tab", { name: new RegExp(`${name}$`) });
+
 await page.goto(APP);
-await page.getByText("Scan my accounts").waitFor();
-await card(
-  `<div class="logo">🐦 looni</div><div class="big">Your bank won't tell you where your money <em>leaks</em>.</div><div class="sub">Looni finds it, and makes sure you never miss a bill.</div>`,
-  3200,
-);
+await page.getByText("Drop a statement instead").waitFor();
+await card(`${LOGO}<div class="big">Find the fees you <em>never noticed.</em></div><div class="sub">Not another budget app. It finds you money, every month.</div>`, 3400);
 
-await caption("Looni scans your accounts for money you're losing every year");
+await caption("Every fee, price rise and double charge, with the receipts");
 await wait(2600);
-await tap(page.getByText("Scan my accounts"), 900);
-
-await caption("Your data, your call", "Bank-grade encryption. Raw transactions are never stored.", { top: true });
-await wait(2400);
-await tap(page.getByLabel("Share anonymous examples"), 600);
-await tap(page.getByText("Continue", { exact: true }), 900);
-
-await caption("Connect a bank through Plaid", "Demo: Plaid Sandbox test account");
-await wait(1800);
-await tap(page.getByText("Leaky test account"), 300);
-await caption("Scanning a year of transactions…");
-await page.getByText("YOU'RE LEAKING").waitFor({ timeout: 90_000 });
+await caption("No bank login needed to try it", "Drop a statement export. The file is never stored.");
+await wait(1600);
+await tap(page.getByText("Drop a statement instead"), 900);
+await wait(1200);
+const chooser = page.waitForEvent("filechooser");
+await tap(page.getByText("Choose statement files"), 200);
+await (await chooser).setFiles(statementPath);
+await caption("Reading 12 months of transactions…");
+await page.getByText("LEAKING IN THIS FILE, PER YEAR").waitFor({ timeout: 60_000 });
+await wait(500);
+await caption("Found in seconds. Nothing stored yet.", "Your bank's quiet score, and the one move that saves the most.");
+await wait(3600);
+await scroll(520, 2200);
+await caption("Each leak with a confidence level: HIGH, or CHECK");
+await wait(2200);
+await tap(page.getByText("Keep these findings on my receipt"), 300);
+await page.getByText("Leak Receipt", { exact: true }).waitFor({ timeout: 30_000 });
 await wait(600);
 
-await caption("$1,986 a year leaking, found in seconds");
-await wait(1800);
-await caption("A $1 charge from a merchant you've never used", "Fraudsters test stolen cards this way. One tap to act on it.");
-await wait(3200);
-await scroll(330);
-await caption("Bank fees, forgotten subscriptions, price hikes, double charges");
-await wait(1200);
-await scroll(520, 1800);
-await wait(800);
-await caption("Tell Looni which leaks are real", "\"Keep it\" takes a charge off your total. \"Don't need it\" tracks it until it stops.");
-await tap(page.getByText("Don't need it").first(), 1600);
-await scroll(700, 2000);
-await wait(900);
-await scroll(-2000, 1400);
-await wait(400);
-
-await caption("New: every bill, in one place");
-await tap(page.getByLabel("Bills").first(), 300);
-await page.getByText("Coming up").waitFor({ timeout: 30_000 });
-await wait(400);
-await scroll(-3000, 10); // the web build can open scrolled; start at the top
-await caption("Will your balance cover the bills before payday?", "Looni checks your live balance against what's due. It's never stored.");
-await wait(4200);
-await caption("$455 short, and the exact day money needs to be in", "An NSF fee costs about $48. This warning costs nothing.");
-await wait(3800);
-await scroll(330, 1300);
-await caption("A bill that should have come out but didn't", "Catch it before it turns into a late fee.");
+await caption("The Leak Receipt", "Every line opens to the charges behind it.", { top: true });
+await wait(2800);
+await scroll(260, 1400);
+await caption("NSF fees above the $10 cap: money the bank owes you back", "", { top: true });
+await wait(3000);
+await caption("");
+await tap(byText("Monthly account fees"), 1200);
+await caption("12 charges × $16.95. The rule, the confidence, the evidence.", "", { top: true });
 await wait(3400);
-await scroll(380, 1500);
-await caption("Every due date, with reminders when you want them");
-await wait(1600);
-await scroll(160, 900);
-await caption("Hydro jumped to $142.60. Looni flags bills that change.");
-await wait(3200);
-await tap(page.getByLabel(/Options for Rent/), 900);
-await caption("Choose when to be reminded, per bill");
-await wait(1500);
-await tap(page.getByText("Remind me 7 days before"), 800);
-await scroll(600, 1800);
-await caption("Paydays are spotted automatically", "So Looni knows what has to be covered, and until when.", { top: true });
+await scroll(520, 1800);
+await caption("And the exact words to say", "Low-cost accounts are capped at $4 a month.", { top: true });
 await wait(2600);
+await tap(page.getByText("Copy script"), 1400);
+await tap(byText("Confirm"), 1800);
+await caption("");
+await page.goBack();
+await wait(800);
+
+await tap(tab("Home"), 1500);
+await caption("Banks, cards, investments, mortgage. One place.", SAMPLE_BALANCES ? "Sample balances: live once a bank is connected." : "");
+await wait(3800);
+await scroll(560, 1800);
+await caption("Bounce risk, renewal, leaks: at a glance");
+await wait(2400);
+await tap(page.getByText("Bounce risk", { exact: false }).first(), 1500);
+await caption("Know before it bounces", "Bills land before payday. Your savings at another bank can cover it.", { top: true });
+await wait(4200);
+await caption("");
+await page.goBack();
+await wait(800);
+
+await tap(tab("Move"), 1300);
+await caption("Your bank writes at 21 days. Looni starts at 180.", "", { top: true });
+await wait(2400);
+await page.getByPlaceholder("2027-02-09").fill(iso(today + 112 * DAY));
+await page.getByText("Balance (optional)").first().click({ force: true });
+await page.keyboard.type("450000", { delay: 40 });
+await page.getByText("Letter rate %").first().click({ force: true });
+await page.keyboard.type("4.89", { delay: 60 });
+await page.getByText("Best quote %").first().click({ force: true });
+await page.keyboard.type("4.29", { delay: 60 });
+await tap(page.getByText("Start my countdown"), 1400);
+await caption("112 days out: get two written quotes and a rate hold", "Reminders at 180, 120, 90 and 21 days.", { top: true });
+await wait(3600);
+await scroll(520, 1800);
+await caption("Signing the letter costs $8,599 more than the best quote", "On $450,000, 4.89% vs 4.29%, over five years.", { top: true });
+await wait(3600);
+await scroll(560, 2000);
+await caption("The switch kit: every payment and deposit, so nothing bounces", "", { top: true });
+await wait(3600);
+await scroll(820, 2400);
+await caption("Rate Block: renewals pooled, lenders bid for the block", "Coming 2027. The commission is split half and half with you.", { top: true });
+await wait(2600);
+await tap(page.getByText("ON", { exact: true }).first(), 1400);
+await wait(1800);
+
+await caption("");
+await tap(tab("Loon"), 1400);
+await caption("Fix a leak, your loon grows", "One minute a week.", { top: true });
+await wait(3200);
+await scroll(1400, 2600);
+await caption("Newcomer and student tracks: 12 tasks, one a week", "", { top: true });
+await wait(3000);
 await caption("");
 
-await card(
-  `<div class="logo">🐦 looni</div><div class="big">Stop the leaks.<br/><em>Never miss a bill.</em></div><div class="sub">Built on Plaid. Your raw transactions and balances are never stored.</div>`,
-  3800,
-);
+await tap(tab("Home"), 900);
+await scroll(2400, 1600);
+await tap(page.getByRole("button", { name: "Year receipt", exact: true }), 1400);
+await caption("The receipt people share", "Kinds of charges and totals only. No bank or account names.", { top: true });
+await wait(4200);
+await caption("");
+
+await card(`${LOGO}<div class="big">Not another budget app.<br/><em>It finds you money, every month.</em></div><div class="sub">Read-only. Raw transactions are never stored. Built in Canada.</div>`, 4200);
 
 await cdp.send("Page.stopScreencast");
 await browser.close();
