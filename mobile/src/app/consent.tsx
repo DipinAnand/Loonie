@@ -1,13 +1,13 @@
 import { router } from "expo-router";
 import { useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
-import { Button, Card, Divider, HelperText, List, Switch, Text, useTheme } from "react-native-paper";
+import { Switch, Text } from "react-native-paper";
+import { Button, Row, Screen, Section, useCalm } from "../components/calm";
 import { api } from "../lib/api";
-import { font } from "../theme";
+import { type } from "../theme";
 
 /** Plain-language data notice + the opt-in for anonymous training data. Shown before any bank is connected. */
 export default function Consent() {
-  const theme = useTheme();
+  const c = useCalm();
   const [training, setTraining] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,68 +25,21 @@ export default function Consent() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text variant="headlineSmall" style={{ fontFamily: font.display }}>
-        How Looni handles your bank data
-      </Text>
-
-      <Card mode="contained">
-        <List.Item
-          title="We read, then let go"
-          description="Each scan reads your transactions from Plaid, finds the leaks, and discards the transactions. We don't keep a copy of your bank history."
-          descriptionNumberOfLines={4}
-          left={(p) => <List.Icon {...p} icon="eye-off-outline" />}
+    <Screen title="How Looni handles your bank data" footer={<Button label="Continue" onPress={proceed} loading={saving} />}>
+      <Section>
+        <Row title="We read, then let go" subtitle="Each scan reads your transactions, finds the leaks, and discards the transactions. No copy of your bank history." />
+        <Row title="We keep only the findings" subtitle={"Like “Netflix, $16.49 monthly, since May”, encrypted with a key unique to you."} />
+        <Row title="Read-only, always" subtitle="Looni can't move money or see your bank password." />
+        <Row title="Gone when you say so" subtitle="Disconnect and your key is destroyed, so your findings can't be read again, even from backups." />
+      </Section>
+      <Section title="Optional">
+        <Row
+          title="Help improve leak detection"
+          subtitle="Share anonymous examples (merchant, how often, a price range) when you confirm a leak. Never your name, account or exact amounts."
+          right={<Switch value={training} onValueChange={setTraining} accessibilityLabel="Share anonymous examples" color={c.action} />}
         />
-        <Divider />
-        <List.Item
-          title="We keep only the findings"
-          description="Like “Netflix, $16.49 monthly, since May”. They're encrypted with a key unique to you."
-          descriptionNumberOfLines={4}
-          left={(p) => <List.Icon {...p} icon="shield-key-outline" />}
-        />
-        <Divider />
-        <List.Item
-          title="Read-only, always"
-          description="Looni can't move money or see your bank password."
-          descriptionNumberOfLines={3}
-          left={(p) => <List.Icon {...p} icon="lock-outline" />}
-        />
-        <Divider />
-        <List.Item
-          title="Gone when you say so"
-          description="Disconnect and your key is destroyed, so your findings can't be read again, even from backups."
-          descriptionNumberOfLines={4}
-          left={(p) => <List.Icon {...p} icon="delete-outline" />}
-        />
-      </Card>
-
-      <Card mode="outlined">
-        <Card.Content style={styles.toggle}>
-          <View style={{ flex: 1, gap: 4 }}>
-            <Text variant="titleMedium">Help improve leak detection</Text>
-            <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-              When you confirm or dismiss a leak, share an anonymous example (merchant, how often it charges, a price
-              range) to train Looni's models. Never your name, account or exact amounts. Anonymous examples can't be
-              traced back to you, so they aren't deleted with your account. Optional.
-            </Text>
-          </View>
-          <Switch value={training} onValueChange={setTraining} accessibilityLabel="Share anonymous examples" />
-        </Card.Content>
-      </Card>
-
-      {error && (
-        <HelperText type="error" visible>
-          {error}
-        </HelperText>
-      )}
-      <Button mode="contained" loading={saving} disabled={saving} onPress={proceed} contentStyle={{ paddingVertical: 8 }}>
-        Continue
-      </Button>
-    </ScrollView>
+      </Section>
+      {error && <Text style={[type.secondary, { color: c.leak }]}>{error}</Text>}
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { padding: 24, gap: 16 },
-  toggle: { flexDirection: "row", gap: 16, alignItems: "center" },
-});

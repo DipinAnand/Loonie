@@ -211,8 +211,7 @@ async function tap(locator, pause = 500) {
     await wait(350);
   }
   try {
-    // force: Paper's List.Item marks its row aria-disabled when the row itself isn't pressable,
-    // which Playwright reads as disabling the buttons inside it.
+    // force: skip Playwright's stability wait; screen transitions keep rows moving for a moment.
     await locator.click({ timeout: 15_000, force: true });
   } catch (err) {
     await page.screenshot({ path: join(OUT, "failed-tap.png") });
@@ -259,20 +258,20 @@ await page.getByText("Scan my accounts").waitFor();
 await card(`${LOGO}<div class="big">Find the fees you <em>never noticed.</em></div><div class="sub">Not another budget app. It finds you money, every month.</div>`, 3400);
 
 if (FROM_STATEMENT) {
-  await caption("No bank login? Drop a statement export", "The file is never stored.");
+  await caption("No bank login? Scan a statement export", "The file is never stored.");
   await wait(1600);
-  await tap(page.getByText("Drop a statement instead"), 900);
+  await tap(page.getByText("Scan a statement instead"), 900);
   await wait(1200);
   const chooser = page.waitForEvent("filechooser");
   await tap(page.getByText("Choose statement files"), 200);
   await (await chooser).setFiles(statementPath);
   await caption("Reading 12 months of transactions…");
-  await page.getByText("LEAKING IN THIS FILE, PER YEAR").waitFor({ timeout: 60_000 });
+  await page.getByText("Leaking per year, from this file").waitFor({ timeout: 60_000 });
   await wait(500);
-  await caption("Found in seconds. Nothing stored yet.", "Your bank's quiet score, and the one move that saves the most.");
+  await caption("Found in seconds. Nothing stored yet.", "Your bank's score, and the one move that saves the most.");
   await wait(3600);
   await scroll(520, 2200);
-  await caption("Each leak with a confidence level: HIGH, or CHECK");
+  await caption("Each leak marked Certain, or Check it");
   await wait(2200);
   await tap(page.getByText("Keep these findings on my receipt"), 300);
 } else {
@@ -290,38 +289,40 @@ if (FROM_STATEMENT) {
 await page.getByText("Leak Receipt", { exact: true }).waitFor({ timeout: 90_000 });
 await wait(600);
 if (!FROM_STATEMENT) {
-  await caption("A $1 charge from a merchant you've never used", "Fraudsters test stolen cards this way. One tap to act on it.", { top: true });
+  await caption("A $1 charge from a merchant you've never used", "Fraudsters test stolen cards this way. One tap to act on it.");
   await wait(3400);
-  await scroll(240, 1200);
 }
 
-await caption("The Leak Receipt", "Every line opens to the charges behind it.", { top: true });
-await wait(2800);
-await scroll(260, 1400);
-await caption("NSF fees above the $10 cap: money the bank owes you back", "", { top: true });
+await caption("One number: what's leaking this year", "Every leak opens to the charges behind it.");
 await wait(3000);
+await scroll(320, 1600);
+await wait(1600);
 await caption("");
 await tap(byText("Monthly account fees"), 1200);
-await caption("Every charge behind it, with the rule and the confidence", "", { top: true });
-await wait(3400);
-await scroll(520, 1800);
-await caption("And the exact words to say", "Low-cost accounts are capped at $4 a month.", { top: true });
+await caption("Every charge behind it, with the rule");
+await wait(3200);
+await scroll(400, 1600);
+await caption("And the exact words to say", "Low-cost accounts are capped at $4 a month.");
 await wait(2600);
-await tap(page.getByText("Copy script"), 1400);
-await tap(byText("Confirm"), 1800);
+await tap(byText("Copy"), 1200);
+await tap(page.getByText("Yes, this is a leak"), 1800);
 await caption("");
 await page.goBack();
 await wait(800);
 
 await tap(tab("Home"), 1500);
+await caption("Home: one number, one next move");
+await wait(3400);
+await tap(page.getByText("Heads up for", { exact: false }).first(), 1500);
+await caption("Know before it bounces", "Rent, hydro and daycare land before payday.");
+await wait(4000);
+await caption("");
+await page.goBack();
+await wait(800);
+await scroll(700, 1600);
+await tap(page.getByText(/^\d+ accounts?$/).first(), 1400);
 await caption("Every account, one place", SAMPLE_BALANCES ? "Sample balances: live once a bank is connected." : "Live balances from Plaid. Never stored.");
-await wait(3800);
-await scroll(560, 1800);
-await caption("Bounce risk, renewal, leaks: at a glance");
-await wait(2400);
-await tap(page.getByText("Bounce risk", { exact: false }).first(), 1500);
-await caption("Know before it bounces", "Rent, hydro and daycare land before payday.", { top: true });
-await wait(4200);
+await wait(3400);
 await caption("");
 await page.goBack();
 await wait(800);
@@ -329,40 +330,34 @@ await wait(800);
 await tap(tab("Move"), 1300);
 await caption("Your bank writes at 21 days. Looni starts at 180.", "", { top: true });
 await wait(2400);
-await page.getByPlaceholder("2027-02-09").fill(iso(today + 112 * DAY));
-await page.getByText("Balance (optional)").first().click({ force: true });
-await page.keyboard.type("450000", { delay: 40 });
-await page.getByText("Letter rate %").first().click({ force: true });
-await page.keyboard.type("4.89", { delay: 60 });
-await page.getByText("Best quote %").first().click({ force: true });
-await page.keyboard.type("4.29", { delay: 60 });
+await page.getByLabel("Maturity date").fill(iso(today + 112 * DAY));
+await page.getByLabel("Balance (optional)").pressSequentially("450000", { delay: 40 });
+await page.getByLabel("Letter rate").pressSequentially("4.89", { delay: 60 });
+await page.getByLabel("Best quote").pressSequentially("4.29", { delay: 60 });
 await tap(page.getByText("Start my countdown"), 1400);
-await caption("112 days out: get two written quotes and a rate hold", "Reminders at 180, 120, 90 and 21 days.", { top: true });
-await wait(3600);
-await scroll(520, 1800);
-await caption("Signing the letter costs $8,599 more than the best quote", "On $450,000, 4.89% vs 4.29%, over five years.", { top: true });
-await wait(3600);
-await scroll(560, 2000);
-await caption("The switch kit: every payment and deposit, so nothing bounces", "", { top: true });
-await wait(3600);
-await scroll(820, 2400);
-await caption("Rate Block: renewals pooled, lenders bid for the block", "Coming 2027. The commission is split half and half with you.", { top: true });
-await wait(2600);
-await tap(page.getByText("ON", { exact: true }).first(), 1400);
+await caption("112 days out: get two written quotes and a rate hold", "Signing the letter costs more than the best quote. Reminders at 180, 120, 90 and 21 days.");
+await wait(4200);
+await scroll(500, 1600);
+await tap(byText("Rate Block"), 1400);
+await caption("Rate Block: renewals pooled, lenders bid for the block", "Coming 2027. The commission is split half and half with you.");
+await wait(3000);
+await tap(page.getByRole("button", { name: /Join the Ontario pool/ }), 1600);
 await wait(1800);
-
 await caption("");
+await page.goBack();
+await wait(800);
+
 await tap(tab("Loon"), 1400);
-await caption("Fix a leak, your loon grows", "One minute a week.", { top: true });
+await caption("Fix a leak, your loon grows", "One minute a week.");
 await wait(3200);
-await scroll(1400, 2600);
-await caption("Newcomer and student tracks: 12 tasks, one a week", "", { top: true });
+await scroll(900, 2200);
+await caption("Newcomer and student tracks: 12 tasks, one a week");
 await wait(3000);
 await caption("");
 
 await tap(tab("Home"), 900);
-await scroll(2400, 1600);
-await tap(page.getByRole("button", { name: "Year receipt", exact: true }), 1400);
+await scroll(1600, 1400);
+await tap(byText("Your year receipt"), 1400);
 await caption("The receipt people share", "Kinds of charges and totals only. No bank or account names.", { top: true });
 await wait(4200);
 await caption("");

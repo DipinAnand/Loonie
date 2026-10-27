@@ -1,15 +1,16 @@
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
-import { ActivityIndicator, Button, Card, HelperText, List, Text, useTheme } from "react-native-paper";
+import { ActivityIndicator, View } from "react-native";
+import { Text } from "react-native-paper";
+import { Button, Centered, Note, Row, Screen, Section, useCalm } from "../components/calm";
 import { api, ApiError } from "../lib/api";
 import { isPlaidLinkAvailable, openPlaidLink } from "../lib/plaidLink";
-import { font } from "../theme";
+import { space, type } from "../theme";
 
 type Phase = { name: "idle" } | { name: "linking" } | { name: "scanning"; bank?: string } | { name: "error"; message: string };
 
 export default function Connect() {
-  const theme = useTheme();
+  const c = useCalm();
   const [phase, setPhase] = useState<Phase>({ name: "idle" });
   const linkAvailable = isPlaidLinkAvailable();
   // The test-bank shortcuts only make sense (and only work) against Plaid Sandbox.
@@ -23,7 +24,7 @@ export default function Connect() {
   const busy = phase.name === "linking" || phase.name === "scanning";
 
   const fail = (err: unknown) =>
-    setPhase({ name: "error", message: err instanceof ApiError || err instanceof Error ? err.message : "Something went wrong" });
+    setPhase({ name: "error", message: err instanceof ApiError || err instanceof Error ? err.message : "Couldn't connect. Check your internet and try again." });
 
   async function connectWithPlaid() {
     setPhase({ name: "linking" });
@@ -45,7 +46,7 @@ export default function Connect() {
   }
 
   async function quickLink(scenario: "leaky" | "dynamic") {
-    setPhase({ name: "scanning", bank: "Plaid sandbox bank" });
+    setPhase({ name: "scanning", bank: "the test bank" });
     try {
       await api.sandboxQuickLink(scenario);
       router.replace("/receipt");
@@ -56,91 +57,47 @@ export default function Connect() {
 
   if (phase.name === "scanning") {
     return (
-      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator size="large" />
-        <Text variant="titleMedium" style={{ marginTop: 24 }}>
-          Scanning {phase.bank ?? "your accounts"}…
-        </Text>
-        <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant, marginTop: 8, textAlign: "center" }}>
-          Pulling up to 12 months of transactions and checking them for fees, subscriptions and price hikes.
-        </Text>
-      </View>
+      <Centered>
+        <View style={{ alignItems: "center", gap: space.l }}>
+          <ActivityIndicator color={c.action} />
+          <Text style={[type.heading, { color: c.text }]}>Scanning {phase.bank ?? "your accounts"}</Text>
+          <Text style={[type.secondary, { color: c.textSecondary, textAlign: "center" }]}>
+            Checking up to 12 months of transactions for fees, subscriptions and price rises.
+          </Text>
+        </View>
+      </Centered>
     );
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text variant="headlineSmall" style={{ fontFamily: font.display }}>
-        Connect securely with Plaid
-      </Text>
-      <Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>
-        Plaid connects Looni to your bank. You log in on your bank's screen; we never see your password.
-      </Text>
-
-      <Card mode="contained">
-        <List.Item title="Read-only" description="Looni can see transactions. It can't move money." left={(p) => <List.Icon {...p} icon="eye-outline" />} />
-        <List.Item title="Encrypted" description="Bank tokens are encrypted at rest (AES-256)." left={(p) => <List.Icon {...p} icon="lock-outline" />} />
-        <List.Item title="Yours to delete" description="Disconnect anytime and your data is deleted." left={(p) => <List.Icon {...p} icon="delete-outline" />} />
-      </Card>
-
+    <Screen
+      title="Connect securely with Plaid"
+      subtitle="You log in on your bank's own screen. Looni never sees your password."
+      footer={
+        <>
+          <Button label="Connect a bank" icon="bank" onPress={connectWithPlaid} loading={phase.name === "linking"} disabled={busy || !linkAvailable} />
+          <Button label="Scan a statement instead" variant="secondary" onPress={() => router.push("/import")} disabled={busy} />
+        </>
+      }
+    >
+      <Section>
+        <Row title="Read-only" subtitle="Looni sees transactions. It can't move money." />
+        <Row title="Encrypted" subtitle="Your bank connection is stored with strong encryption." />
+        <Row title="Yours to delete" subtitle="Disconnect any time and your data is deleted." />
+      </Section>
       {phase.name === "error" && (
-        <HelperText type="error" visible style={{ fontSize: 14 }}>
+        <Text accessibilityRole="alert" style={[type.secondary, { color: c.leak }]}>
           {phase.message}
-        </HelperText>
+        </Text>
       )}
-
-      <Button
-        mode="contained"
-        icon="bank"
-        loading={phase.name === "linking"}
-        disabled={busy || !linkAvailable}
-        onPress={connectWithPlaid}
-        contentStyle={styles.cta}
-      >
-        Connect a bank
-      </Button>
-      {!linkAvailable && (
-        <HelperText type="info" visible>
-          Plaid Link needs a development build (npx expo run:ios or run:android). In Expo Go or on web, use the sandbox
-          shortcut below.
-        </HelperText>
-      )}
-
-      <Button icon="file-upload-outline" disabled={busy} onPress={() => router.push("/import")}>
-        No bank login? Scan a statement file instead
-      </Button>
-
+      {!linkAvailable && <Note>Connecting a real bank needs the installed app. In this preview, use a test bank below.</Note>}
       {sandbox && (
-        <Card mode="outlined" style={{ marginTop: 8 }}>
-          <Card.Title title="Plaid Sandbox" subtitle="Test banks, no real money" />
-          <Card.Content style={{ gap: 6 }}>
-            <Text variant="bodyMedium">
-              In Plaid Link, pick any bank (e.g. First Platypus Bank) and log in with{" "}
-              <Text style={styles.mono}>user_good</Text> / <Text style={styles.mono}>pass_good</Text>. For realistic recurring
-              data, use <Text style={styles.mono}>user_transactions_dynamic</Text> with any password. MFA code:{" "}
-              <Text style={styles.mono}>1234</Text>.
-            </Text>
-            <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-              Or skip Link entirely and have the server create a sandbox connection:
-            </Text>
-          </Card.Content>
-          <Card.Actions>
-            <Button disabled={busy} onPress={() => quickLink("dynamic")}>
-              Plaid sample data
-            </Button>
-            <Button mode="contained-tonal" disabled={busy} onPress={() => quickLink("leaky")}>
-              Leaky test account
-            </Button>
-          </Card.Actions>
-        </Card>
+        <Section title="Test banks">
+          <Row title="Leaky test account" subtitle="A year of fees, subscriptions and a double charge" onPress={busy ? undefined : () => quickLink("leaky")} />
+          <Row title="Plaid sample data" subtitle="Plaid's standard test transactions" onPress={busy ? undefined : () => quickLink("dynamic")} />
+          <Note>In Plaid Link, pick any bank and log in with user_good / pass_good, or user_transactions_dynamic for recurring data. MFA code: 1234.</Note>
+        </Section>
       )}
-    </ScrollView>
+    </Screen>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { padding: 24, gap: 16 },
-  center: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32 },
-  cta: { paddingVertical: 8 },
-  mono: { fontFamily: "monospace", fontWeight: "600" },
-});

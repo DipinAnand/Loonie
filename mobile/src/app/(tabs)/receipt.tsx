@@ -1,34 +1,42 @@
-import { router, useFocusEffect, useNavigation } from "expo-router";
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
-import { Alert, FlatList, Platform, RefreshControl, StyleSheet, View } from "react-native";
-import { ActivityIndicator, Banner, Button, Card, IconButton, List, Snackbar, Text, useTheme } from "react-native-paper";
-import { LeakCard } from "../../components/LeakCard";
-import { ReceiptCard } from "../../components/ReceiptCard";
-import { Overline, Panel, SectionTitle, tones } from "../../components/ui";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { Alert, Platform } from "react-native";
+import { Snackbar, Text } from "react-native-paper";
+import { Button, Callout, Centered, Hero, Note, Row, Screen, Section, useCalm } from "../../components/calm";
 import { api } from "../../lib/api";
-import { inDaysLabel, money } from "../../lib/format";
+import { money } from "../../lib/format";
 import { openPlaidLink } from "../../lib/plaidLink";
 import { enablePush } from "../../lib/push";
-import type { Bills, Connection, LeakReceipt, Verdict } from "../../lib/types";
+import type { Connection, Leak, LeakReceipt } from "../../lib/types";
 import { resetUserId } from "../../lib/user";
-import { font } from "../../theme";
+import { type } from "../../theme";
 
-const stoppedLabel = (n: number) => (n === 1 ? "1 leak you flagged has stopped" : `${n} leaks you flagged have stopped`);
+const cadence = /\s\((weekly|biweekly|monthly|quarterly|annual)\)$/;
+const KIND: Record<Leak["kind"], string> = {
+  fee: "Bank fee",
+  subscription: "Subscription",
+  price_hike: "Price rise",
+  duplicate: "Double charge",
+  suspicious: "Suspicious charge",
+};
+
+/** One line per leak: what it is, how sure Looni is, what it costs. The proof is one tap away. */
+function leakSubtitle(l: Leak): { text: string; dot?: "leak" | "caution" | "secondary" } {
+  if (l.verdict === "dismissed") return { text: "You said this is expected" };
+  if (l.verdict === "confirmed") return { text: `${KIND[l.kind]} · you confirmed it`, dot: "leak" };
+  const sure = l.meta.confidence === "high";
+  return { text: `${sure ? "Certain" : "Check it"} · ${KIND[l.kind].toLowerCase()}${l.isNew ? " · new" : ""}`, dot: sure ? "leak" : "caution" };
+}
 
 export default function Receipt() {
-  const theme = useTheme();
-  const navigation = useNavigation();
+  const c = useCalm();
   const [receipt, setReceipt] = useState<LeakReceipt | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [bills, setBills] = useState<Bills | null>(null);
 
   const load = useCallback(async () => {
     try {
       setReceipt(await api.receipt());
-      // Teaser only: skip the live balance check here, the Bills screen does it.
-      const b = await api.bills(false).catch(() => null);
-      setBills(b?.ready ? b : null);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -40,17 +48,6 @@ export default function Receipt() {
       load();
     }, [load]),
   );
-
-  useLayoutEffect(() => {
-    navigation.setOptions({
-      headerRight: () => (
-        <View style={{ flexDirection: "row" }}>
-          <IconButton icon="calendar-clock" accessibilityLabel="Bills" onPress={() => router.push("/bills")} />
-          <IconButton icon="format-list-bulleted" accessibilityLabel="Accounts and transactions" onPress={() => router.push("/transactions")} />
-        </View>
-      ),
-    });
-  }, [navigation]);
 
   // Ask for notifications only after the user has seen their leaks (never at first launch).
   const leakCount = receipt?.leaks.length ?? 0;
@@ -70,28 +67,11 @@ export default function Receipt() {
     }
   }
 
-  async function reconnect(c: Connection) {
+  async function reconnect(conn: Connection) {
     try {
-      const { linkToken } = await api.createUpdateLinkToken(c.itemId);
+      const { linkToken } = await api.createUpdateLinkToken(conn.itemId);
       const outcome = await openPlaidLink(linkToken);
       if (outcome.type === "success") await rescan();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }
-
-  async function label(leakId: string, verdict: Verdict) {
-    // Optimistic: flip the card now, then pull the recomputed total.
-    const flip = (ls: LeakReceipt["leaks"]) => ls.map((l) => (l.id === leakId ? { ...l, verdict } : l));
-    setReceipt((r) => r && { ...r, leaks: flip(r.leaks), suspicious: flip(r.suspicious) });
-    try {
-      const result = await api.label(leakId, verdict);
-      if (result.notMeSteps) {
-        const text = result.notMeSteps.map((step, i) => `${i + 1}. ${step}`).join("\n\n");
-        if (Platform.OS === "web") globalThis.alert?.(text);
-        else Alert.alert("Here's what to do", text);
-      }
-      await load();
     } catch (e) {
       setError((e as Error).message);
     }
@@ -108,176 +88,108 @@ export default function Receipt() {
   }
 
   function disconnect() {
-    const message = "This removes your bank connections and destroys your encryption key, so your findings can't be read again.";
+    const message = "This removes your bank connections and destroys your encryption key, so your findings can't be read again. This can't be undone.";
     if (Platform.OS === "web") {
       if (globalThis.confirm?.(message)) deleteEverything();
       return;
     }
-    Alert.alert("Disconnect & delete?", message, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: deleteEverything },
+    Alert.alert("Delete all your Looni data?", message, [
+      { text: "Keep my data", style: "cancel" },
+      { text: "Delete my data", style: "destructive", onPress: deleteEverything },
     ]);
   }
 
-  if (!receipt) {
-    return (
-      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-        {error ? <Text style={{ color: theme.colors.error, padding: 24 }}>{error}</Text> : <ActivityIndicator />}
-      </View>
-    );
-  }
+  if (!receipt) return <Centered>{error ? <Text style={[type.body, { color: c.leak, textAlign: "center" }]}>{error}</Text> : undefined}</Centered>;
 
-  const broken = receipt.connections.filter((c) => c.status !== "healthy");
-  const confirmed = receipt.leaks.filter((l) => l.verdict === "confirmed").length;
-  const newCount = receipt.leaks.filter((l) => l.isNew).length;
-  const t = tones(theme.dark);
   const openLeak = (id: string) => router.push({ pathname: "/leak/[id]", params: { id } });
+  const broken = receipt.connections.filter((conn) => conn.status !== "healthy");
+  const suspicious = receipt.suspicious.filter((l) => l.verdict === null);
+  const stopped = receipt.resolved.filter((l) => l.verdict === "confirmed");
+  const counted = receipt.leaks.filter((l) => l.verdict !== "dismissed").length;
 
   return (
     <>
-      <FlatList
-        data={receipt.leaks}
-        keyExtractor={(l) => l.id}
-        contentContainerStyle={styles.list}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={rescan} />}
-        ListHeaderComponent={
-          <View style={{ gap: 12, marginBottom: 16 }}>
-            {broken.map((c) => (
-              <Banner
-                key={c.itemId}
-                visible
-                icon="bank-off"
-                style={{ borderRadius: 12 }}
-                actions={
-                  c.status === "login_required"
-                    ? [{ label: "Reconnect", onPress: () => reconnect(c) }]
-                    : [{ label: "Connect again", onPress: () => router.push("/connect") }]
-                }
-              >
-                {`${c.institution ?? "A bank"} needs attention. ${
-                  c.status === "login_required" ? "Log in again to keep scanning." : "Access was removed."
-                } Your findings below are safe.`}
-              </Banner>
-            ))}
+      <Screen safeTop title="Leak Receipt" refreshing={refreshing} onRefresh={receipt.connections.length ? rescan : undefined}>
+        {broken.map((conn) => (
+          <Callout
+            key={conn.itemId}
+            title={`${conn.institution ?? "A bank"} needs you`}
+            action={
+              conn.status === "login_required"
+                ? { label: "Log in again", onPress: () => reconnect(conn) }
+                : { label: "Connect again", onPress: () => router.push("/connect") }
+            }
+          >
+            {conn.status === "login_required" ? "Looni can't read new transactions until you log in again. Your findings are safe." : "Access was removed. Your findings are safe."}
+          </Callout>
+        ))}
 
-            {receipt.suspicious
-              .filter((l) => l.verdict === null)
-              .map((l) => (
-                <LeakCard key={l.id} leak={l} onVerdict={(v) => label(l.id, v)} onOpen={() => openLeak(l.id)} />
-              ))}
+        {suspicious.map((l) => (
+          <Callout key={l.id} title={`Was this you? ${l.title}`} action={{ label: "Review it", onPress: () => openLeak(l.id) }}>
+            {l.detail}
+          </Callout>
+        ))}
 
-            <ReceiptCard
-              leaks={receipt.leaks}
-              total={receipt.totalAnnualImpact}
-              grade={receipt.grade}
-              number={(receipt.lastScanAt ?? "").slice(0, 10).replaceAll("-", "") || "000000"}
-              subtitle={`${receipt.transactionCount} transactions${receipt.windowStart ? ` since ${receipt.windowStart}` : ""}${newCount ? ` · ${newCount} new` : ""}`}
-              onOpen={openLeak}
-              edgeColor={theme.colors.background}
-            />
+        {receipt.lastScanAt ? (
+          <Hero
+            label="Leaking this year"
+            value={money(receipt.totalAnnualImpact, "CAD", 0)}
+            tone={receipt.totalAnnualImpact > 0 ? "leak" : "default"}
+            caption={[`${counted} ${counted === 1 ? "leak" : "leaks"}`, receipt.grade && `your bank scores ${receipt.grade}`].filter(Boolean).join(" · ")}
+          />
+        ) : (
+          <Text style={[type.body, { color: c.textSecondary }]}>No scan yet. Plaid can take a minute to fetch transactions. Pull down to scan.</Text>
+        )}
 
-            {receipt.nextMove && (
-              <Panel tone="yellow" onPress={() => openLeak(receipt.nextMove!.leakId)}>
-                <Overline color={t.yellow.fg}>ONE NEXT MOVE</Overline>
-                <Text variant="titleMedium" style={{ fontFamily: font.bold, color: t.yellow.fg }}>
-                  {receipt.nextMove.title}
-                </Text>
-                <Text style={{ color: t.yellow.fg, fontFamily: font.bold }}>Saves {money(receipt.nextMove.savesPerYear)} a year</Text>
-              </Panel>
-            )}
-
-            {bills && <BillsTeaser bills={bills} />}
-
-            {receipt.savedPerYear > 0 && (
-              <Card mode="contained" style={{ backgroundColor: theme.colors.tertiaryContainer }}>
-                <Card.Title
-                  title={`${money(receipt.savedPerYear)} / year saved`}
-                  titleStyle={{ color: theme.colors.onTertiaryContainer, fontFamily: font.bold }}
-                  subtitle={stoppedLabel(receipt.resolved.filter((l) => l.verdict === "confirmed").length)}
-                  subtitleStyle={{ color: theme.colors.onTertiaryContainer }}
-                  left={(p) => <List.Icon {...p} icon="party-popper" color={theme.colors.onTertiaryContainer} />}
+        {receipt.leaks.length > 0 ? (
+          <Section title="Your leaks">
+            {receipt.leaks.map((l) => {
+              const sub = leakSubtitle(l);
+              return (
+                <Row
+                  key={l.id}
+                  title={l.title.replace(cadence, "")}
+                  subtitle={sub.text}
+                  dot={sub.dot}
+                  value={money(l.annualImpact)}
+                  valueTone={l.verdict === "dismissed" ? "secondary" : "default"}
+                  onPress={() => openLeak(l.id)}
                 />
-              </Card>
-            )}
+              );
+            })}
+          </Section>
+        ) : (
+          receipt.lastScanAt && <Text style={[type.body, { color: c.textSecondary }]}>No leaks found. Looni keeps watching.</Text>
+        )}
 
-            {receipt.lastScanAt && (
-              <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                {receipt.connections.length
-                  ? `Last scanned ${receipt.lastScanAt.replace(" ", " at ")} UTC${receipt.lastScanComplete ? "" : " (some accounts unavailable)"}. Pull down to scan again.`
-                  : `From your statement scan on ${receipt.lastScanAt.slice(0, 10)}. Connect a bank to keep it up to date.`}
-              </Text>
-            )}
-            {receipt.leaks.length > 0 && (
-              <SectionTitle>
-                {confirmed ? `Sort the rest · ${confirmed} confirmed` : "Tell Looni which are real"}
-              </SectionTitle>
-            )}
-          </View>
-        }
-        renderItem={({ item }) => <LeakCard leak={item} onVerdict={(v) => label(item.id, v)} onOpen={() => openLeak(item.id)} />}
-        ListEmptyComponent={
-          <Text variant="bodyLarge" style={{ textAlign: "center", marginTop: 32, color: theme.colors.onSurfaceVariant }}>
-            {receipt.lastScanAt ? "No leaks found. Nice!" : "No scan yet. Plaid can take a minute to fetch transactions. Pull down to scan."}
-          </Text>
-        }
-        ListFooterComponent={
-          <View style={styles.footer}>
-            {receipt.resolved.length > 0 && (
-              <List.Section title="Stopped leaks">
-                {receipt.resolved.map((l) => (
-                  <List.Item
-                    key={l.id}
-                    title={l.title}
-                    description={`Not seen since ${l.lastSeen}${l.verdict === "confirmed" ? " · you flagged it" : ""}`}
-                    left={(p) => <List.Icon {...p} icon="check-circle-outline" color={theme.colors.tertiary} />}
-                    right={() => <Text style={{ alignSelf: "center" }}>{money(l.annualImpact)}/yr</Text>}
-                  />
-                ))}
-              </List.Section>
-            )}
-            <Button icon="bank-plus" onPress={() => router.push("/connect")}>
-              Add another account
-            </Button>
-            <Button icon="file-upload-outline" onPress={() => router.push("/import")}>
-              Scan a statement file
-            </Button>
-            <Button icon="share-variant-outline" onPress={() => router.push("/year")}>
-              Share your year receipt
-            </Button>
-            <Button icon="delete-outline" textColor={theme.colors.error} onPress={disconnect}>
-              Disconnect & delete my data
-            </Button>
-          </View>
-        }
-      />
+        {stopped.length > 0 && (
+          <Section title={`Stopped · ${money(receipt.savedPerYear, "CAD", 0)} a year saved`}>
+            {stopped.map((l) => (
+              <Row key={l.id} title={l.title.replace(cadence, "")} subtitle={`Not seen since ${l.lastSeen}`} value={`${money(l.annualImpact, "CAD", 0)}/yr`} valueTone="saved" />
+            ))}
+          </Section>
+        )}
+
+        <Section title="More">
+          <Row title="Bills" subtitle="Due dates, paydays, reminders" onPress={() => router.push("/bills")} />
+          <Row title="Accounts and transactions" subtitle="Live from your bank, not stored" onPress={() => router.push("/transactions")} />
+          <Row title="Scan a statement" subtitle="CSV exports from any bank" onPress={() => router.push("/import")} />
+          <Row title="Add another bank" onPress={() => router.push("/connect")} />
+        </Section>
+
+        <Note>
+          {receipt.lastScanAt
+            ? receipt.connections.length
+              ? `Last scanned ${receipt.lastScanAt.slice(0, 16).replace(" ", " at ")} UTC${receipt.lastScanComplete ? "" : ", some accounts unavailable"}. Pull down to scan again.`
+              : `From your statement scan on ${receipt.lastScanAt.slice(0, 10)}. Connect a bank to keep it up to date.`
+            : "Nothing changes until you say so."}
+        </Note>
+
+        <Button label="Disconnect and delete my data" variant="danger" onPress={disconnect} />
+      </Screen>
       <Snackbar visible={!!error} onDismiss={() => setError(null)} duration={4000}>
         {error}
       </Snackbar>
     </>
   );
 }
-
-function BillsTeaser({ bills }: { bills: Bills }) {
-  const theme = useTheme();
-  const shown = bills.bills.filter((b) => !b.hidden);
-  const late = shown.filter((b) => b.status === "late").length;
-  const next = shown.find((b) => b.status !== "late" && b.inDays >= 0);
-  return (
-    <Card mode="outlined" onPress={() => router.push("/bills")}>
-      <Card.Title
-        title={late ? `${late} bill${late === 1 ? "" : "s"} running late` : next ? `${next.name} ${inDaysLabel(next.inDays)}` : "Your bills"}
-        titleStyle={{ fontFamily: font.bold, color: late ? theme.colors.error : theme.colors.onSurface }}
-        subtitleNumberOfLines={2}
-        subtitle={`${shown.length} bills · about ${money(bills.monthlyTotal)}/month${bills.coverage.payday ? ` · payday ${inDaysLabel(Math.round((Date.parse(bills.coverage.payday.date) - Date.parse(bills.today)) / 86_400_000))}` : ""}`}
-        left={(p) => <List.Icon {...p} icon="calendar-clock" color={late ? theme.colors.error : theme.colors.primary} />}
-        right={(p) => <List.Icon {...p} icon="chevron-right" />}
-      />
-    </Card>
-  );
-}
-
-const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  list: { padding: 16 },
-  footer: { marginTop: 16, gap: 4 },
-});

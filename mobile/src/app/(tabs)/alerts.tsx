@@ -1,45 +1,25 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { FlatList, StyleSheet, View } from "react-native";
-import { Button, SegmentedButtons, Text, useTheme } from "react-native-paper";
-import { Panel, tones, type Tone } from "../../components/ui";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Text } from "react-native-paper";
+import { Row, Screen, Section, useCalm } from "../../components/calm";
 import { api } from "../../lib/api";
 import type { Alert } from "../../lib/types";
-import { font } from "../../theme";
-
-const KIND_TONE: Record<Alert["kind"], Tone> = {
-  suspicious: "leak",
-  fee: "leak",
-  price_hike: "leak",
-  new_leak: "lavender",
-  renewal: "yellow",
-  mortgage: "yellow",
-  hunt: "lavender",
-  report: "green",
-  bill_due: "yellow",
-  bill_late: "leak",
-  low_balance: "leak",
-};
-const KIND_MARK: Record<Alert["kind"], string> = {
-  suspicious: "!",
-  fee: "$",
-  price_hike: "+",
-  new_leak: "2×",
-  renewal: "↻",
-  mortgage: "⌂",
-  hunt: "✓",
-  report: "≡",
-  bill_due: "⏱",
-  bill_late: "!",
-  low_balance: "↓",
-};
+import { space, type } from "../../theme";
 
 type Filter = "all" | "money" | "security";
+const FILTERS: { value: Filter; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "money", label: "Money" },
+  { value: "security", label: "Security" },
+];
 
-/** Everything Looni noticed: fees, price rises, duplicates, renewals and security alerts. */
+const BILL_KINDS = new Set<Alert["kind"]>(["bill_due", "bill_late", "low_balance"]);
+const LEAK_KINDS = new Set<Alert["kind"]>(["fee", "price_hike", "suspicious", "low_balance", "bill_late"]);
+
+/** Everything Looni noticed, newest first. Unread ones carry a dot; each opens what it's about. */
 export default function Alerts() {
-  const theme = useTheme();
-  const t = tones(theme.dark);
+  const c = useCalm();
   const [alerts, setAlerts] = useState<Alert[] | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
 
@@ -57,75 +37,58 @@ export default function Alerts() {
     if (a.leakId) router.push({ pathname: "/leak/[id]", params: { id: a.leakId } });
     else if (a.kind === "mortgage") router.push("/move");
     else if (a.kind === "hunt") router.push("/loon");
-    else if (a.kind === "bill_due" || a.kind === "bill_late" || a.kind === "low_balance") router.push("/bills");
+    else if (BILL_KINDS.has(a.kind)) router.push("/bills");
+  }
+
+  function readAll() {
+    api.markAlertsRead().catch(() => {});
+    setAlerts((all) => all?.map((x) => ({ ...x, read: true })) ?? null);
   }
 
   const shown = (alerts ?? []).filter((a) => filter === "all" || (filter === "security" ? a.security : !a.security));
   const unread = (alerts ?? []).filter((a) => !a.read).length;
 
   return (
-    <FlatList
-      data={shown}
-      keyExtractor={(a) => a.key}
-      contentContainerStyle={styles.container}
-      ListHeaderComponent={
-        <View style={{ gap: 12, marginBottom: 4 }}>
-          <SegmentedButtons
-            value={filter}
-            onValueChange={(v) => setFilter(v as Filter)}
-            buttons={[
-              { value: "all", label: "All" },
-              { value: "money", label: "Money" },
-              { value: "security", label: "Security" },
-            ]}
-          />
-          {unread > 0 && (
-            <Button
-              compact
-              style={{ alignSelf: "flex-end" }}
-              onPress={() => {
-                api.markAlertsRead().catch(() => {});
-                setAlerts((all) => all?.map((x) => ({ ...x, read: true })) ?? null);
-              }}
+    <Screen safeTop title="Alerts">
+      <View style={styles.filters} accessibilityRole="tablist">
+        {FILTERS.map((f) => {
+          const on = f.value === filter;
+          return (
+            <Pressable
+              key={f.value}
+              onPress={() => setFilter(f.value)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: on }}
+              style={[styles.filter, { borderColor: on ? c.text : "transparent" }]}
             >
-              Mark all read
-            </Button>
-          )}
-        </View>
-      }
-      renderItem={({ item }) => {
-        const tone = t[KIND_TONE[item.kind]];
-        return (
-          <Panel onPress={() => open(item)} style={styles.item}>
-            <View style={styles.row}>
-              <View style={[styles.mark, { backgroundColor: tone.bg }]}>
-                <Text style={{ color: tone.fg, fontFamily: font.heavy }}>{KIND_MARK[item.kind]}</Text>
-              </View>
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ fontFamily: item.read ? font.semibold : font.heavy }}>{item.title}</Text>
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  {item.body}
-                </Text>
-              </View>
-              {!item.read && <View style={[styles.unread, { backgroundColor: theme.colors.primary }]} accessibilityLabel="Unread" />}
-            </View>
-          </Panel>
-        );
-      }}
-      ListEmptyComponent={
-        <Text style={{ textAlign: "center", marginTop: 32, color: theme.colors.onSurfaceVariant }}>
-          {alerts === null ? "" : "Nothing yet. Looni writes here when a fee, price rise or renewal needs you."}
-        </Text>
-      }
-      ItemSeparatorComponent={() => <View style={{ height: 10 }} />}
-    />
+              <Text style={[on ? type.bodyStrong : type.body, { color: on ? c.text : c.textSecondary }]}>{f.label}</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      {shown.length > 0 ? (
+        <Section title={unread ? `${unread} new` : "All caught up"} action={unread ? { label: "Mark all read", onPress: readAll } : undefined}>
+          {shown.map((a) => (
+            <Row
+              key={a.key}
+              title={a.title}
+              subtitle={a.body}
+              subtitleTone={LEAK_KINDS.has(a.kind) && !a.read ? "default" : "secondary"}
+              dot={a.read ? undefined : "action"}
+              onPress={() => open(a)}
+              accessibilityLabel={`${a.read ? "" : "New. "}${a.title}. ${a.body}`}
+            />
+          ))}
+        </Section>
+      ) : (
+        alerts && <Text style={[type.body, { color: c.textSecondary }]}>Nothing yet. Looni writes here when a fee, price rise or bill needs you.</Text>
+      )}
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, paddingBottom: 40 },
-  item: { padding: 14 },
-  row: { flexDirection: "row", alignItems: "center", gap: 12 },
-  mark: { width: 44, height: 44, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  unread: { width: 10, height: 10, borderRadius: 5 },
+  filters: { flexDirection: "row", gap: space.xl, marginTop: -space.m },
+  filter: { minHeight: 44, justifyContent: "center", borderBottomWidth: 2 },
 });

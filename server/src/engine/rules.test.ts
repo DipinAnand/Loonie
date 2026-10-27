@@ -67,7 +67,7 @@ describe("foreign transaction spread", () => {
       { asOf: AS_OF },
     );
     const spread = fee(r, "fx_spread")!;
-    assert.match(spread.detail, /2\.5% on \$2310\.00/);
+    assert.match(spread.detail, /2\.5% on \$2,310\.00/);
     assert.equal(spread.meta?.confidence, "medium");
   });
   it("defers to explicit FX fee lines", () => {

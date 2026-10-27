@@ -71,7 +71,7 @@ export const lightTheme: MD3Theme = {
     error: brand.leak,
     errorContainer: brand.leak50,
     onErrorContainer: "#7A2906",
-    background: brand.soft,
+    background: "#FFFFFF",
     onBackground: brand.ink,
     surface: "#FFFFFF",
     onSurface: brand.ink,
@@ -111,5 +111,82 @@ export const darkTheme: MD3Theme = {
     onSurfaceVariant: "#B4B2BE",
     outline: "#4A4855",
     outlineVariant: "#2E2D36",
+  },
+};
+
+// ---- calm system (design/DESIGN_SYSTEM.md) --------------------------------------------------
+// One hero number per screen, colour only as a signal, hairline lists instead of filled cards.
+
+export const space = { xs: 4, s: 8, m: 12, l: 16, xl: 24, xxl: 32, xxxl: 48 } as const;
+/** Screen side margin, gap between sections, smallest tappable row. */
+export const layout = { margin: 24, section: 32, rowMin: 56, tabBar: 84 } as const;
+export const radius = { s: 8, m: 14, l: 16, full: 999 } as const;
+
+/** The whole type scale. Display face only for `hero` and `title`. */
+export const type = {
+  hero: { fontFamily: font.displayBold, fontSize: 52, lineHeight: 58, letterSpacing: -1.5 },
+  title: { fontFamily: font.displayBold, fontSize: 28, lineHeight: 34 },
+  heading: { fontFamily: font.semibold, fontSize: 17, lineHeight: 24 },
+  body: { fontFamily: font.regular, fontSize: 16, lineHeight: 22 },
+  bodyStrong: { fontFamily: font.semibold, fontSize: 16, lineHeight: 22 },
+  secondary: { fontFamily: font.regular, fontSize: 14, lineHeight: 20 },
+  label: { fontFamily: font.semibold, fontSize: 13, lineHeight: 18 },
+  caption: { fontFamily: font.regular, fontSize: 12, lineHeight: 16 },
+} as const;
+
+export interface CalmColors {
+  bg: string;
+  /** Callouts and inputs: the only filled surface. */
+  soft: string;
+  line: string;
+  text: string;
+  textSecondary: string;
+  textTertiary: string;
+  chevron: string;
+  /** Buttons, links, the current tab. */
+  action: string;
+  onAction: string;
+  /** Money leaking. Nothing else is orange. */
+  leak: string;
+  /** Money saved or coming in. Nothing else is green. */
+  saved: string;
+  /** "Check it" findings: a dot plus this text colour. */
+  caution: string;
+  cautionDot: string;
+  loonie: string;
+}
+
+export const calmColors: { light: CalmColors; dark: CalmColors } = {
+  light: {
+    bg: "#FFFFFF",
+    soft: brand.soft,
+    line: brand.line,
+    text: brand.ink,
+    textSecondary: brand.mute,
+    textTertiary: "#706E7A",
+    chevron: "#B4B2BE",
+    action: brand.lavenderDeep,
+    onAction: "#FFFFFF",
+    leak: brand.leak,
+    saved: brand.green,
+    caution: "#7A5D00",
+    cautionDot: "#E0A800",
+    loonie: brand.yellow,
+  },
+  dark: {
+    bg: "#111116",
+    soft: "#1C1B23",
+    line: "#2A2932",
+    text: "#F2F1F6",
+    textSecondary: "#B4B2BE",
+    textTertiary: "#8E8C98",
+    chevron: "#5C5A66",
+    action: "#B8A9E8",
+    onAction: "#16112E",
+    leak: "#FF9E73",
+    saved: "#6FD3A8",
+    caution: "#F2CF5B",
+    cautionDot: "#E0A800",
+    loonie: brand.yellow,
   },
 };

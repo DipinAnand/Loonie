@@ -40,9 +40,9 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
-          <Stack.Screen name="consent" options={{ title: "Your data, your call" }} />
-          <Stack.Screen name="connect" options={{ title: "Connect your bank" }} />
-          <Stack.Screen name="import" options={{ title: "Scan a statement" }} />
+          <Stack.Screen name="consent" options={{ title: "" }} />
+          <Stack.Screen name="connect" options={{ title: "" }} />
+          <Stack.Screen name="import" options={{ title: "" }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="leak/[id]" options={{ title: "Evidence" }} />
           <Stack.Screen name="forecast" options={{ title: "Next 30 days" }} />
@@ -51,6 +51,9 @@ export default function RootLayout() {
           <Stack.Screen name="track/[id]" options={{ title: "Your track" }} />
           <Stack.Screen name="transactions" options={{ title: "Accounts & transactions" }} />
           <Stack.Screen name="bills" options={{ title: "Bills" }} />
+          <Stack.Screen name="accounts" options={{ title: "Accounts" }} />
+          <Stack.Screen name="switch" options={{ title: "Switch kit" }} />
+          <Stack.Screen name="rate-block" options={{ title: "Rate Block" }} />
         </Stack>
       </PaperProvider>
     </SafeAreaProvider>

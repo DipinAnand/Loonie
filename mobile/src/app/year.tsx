@@ -1,14 +1,14 @@
 import * as Sharing from "expo-sharing";
 import { useEffect, useRef, useState } from "react";
-import { Platform, ScrollView, Share, StyleSheet, View } from "react-native";
-import { ActivityIndicator, Button, Snackbar, Text, useTheme } from "react-native-paper";
+import { Platform, Share, StyleSheet, View } from "react-native";
+import { Snackbar, Text } from "react-native-paper";
 import { captureRef } from "react-native-view-shot";
+import { Button, Centered, Note, Screen } from "../components/calm";
 import { LoonMark } from "../components/LoonMark";
-import { Overline } from "../components/ui";
 import { api } from "../lib/api";
 import { money } from "../lib/format";
 import type { YearReceipt } from "../lib/types";
-import { font } from "../theme";
+import { brand, calmColors, layout, radius, space, type } from "../theme";
 
 /** The card is made to be shared, so merchant-specific lines show only the kind of charge. Fee titles are already generic. */
 const KIND_LABEL: Partial<Record<YearReceipt["lines"][number]["kind"], string>> = {
@@ -18,9 +18,11 @@ const KIND_LABEL: Partial<Record<YearReceipt["lines"][number]["kind"], string>> 
 };
 const shareLabel = (l: YearReceipt["lines"][number]) => KIND_LABEL[l.kind] ?? l.title;
 
+// The shared image is always light, like paper, whatever the phone's theme.
+const paper = calmColors.light;
+
 /** "The receipt people screenshot": what your banks charged you this year. No account numbers, no bank names. */
 export default function YearReceiptScreen() {
-  const theme = useTheme();
   const card = useRef<View>(null);
   const [receipt, setReceipt] = useState<YearReceipt | null>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -47,50 +49,40 @@ export default function YearReceiptScreen() {
     }
   }
 
-  if (!receipt) {
-    return (
-      <View style={[styles.center, { backgroundColor: theme.colors.background }]}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
+  if (!receipt) return <Centered />;
 
-  const allFixed = receipt.lines.length > 0 && receipt.fixedCount === receipt.lines.length;
+  const lines = receipt.lines.slice(0, 8);
 
   return (
     <>
-      <ScrollView contentContainerStyle={styles.container}>
-        <View ref={card} collapsable={false} style={styles.receipt}>
-          <LoonMark size={64} />
-          <Overline color="#6C6A76">WHAT YOUR BANKS CHARGED YOU IN {receipt.year}</Overline>
-          <Text style={styles.total}>{money(receipt.charged, "CAD", 0)}</Text>
-          <View style={styles.rule} />
-          {receipt.lines.slice(0, 8).map((l) => (
-            <View key={l.id} style={styles.line}>
-              <Text style={styles.lineTitle} numberOfLines={1}>
-                {shareLabel(l)}
-                {l.fixed ? "  ✓" : ""}
-              </Text>
-              <Text style={styles.lineAmount}>{money(l.amount, "CAD", 0)}</Text>
-            </View>
-          ))}
-          {receipt.lines.length === 0 && <Text style={{ color: "#6C6A76" }}>Nothing yet this year. Scan a statement or connect a bank.</Text>}
-          <View style={styles.rule} />
+      <Screen footer={<Button label="Share my receipt" icon="share-variant" onPress={share} />}>
+        <View ref={card} collapsable={false} style={styles.card}>
+          <LoonMark size={48} water={false} />
+          <View style={{ gap: space.xs }}>
+            <Text style={[type.secondary, { color: paper.textSecondary }]}>What my banks charged me in {receipt.year}</Text>
+            <Text style={[type.hero, { color: paper.leak, fontVariant: ["tabular-nums"] }]}>{money(receipt.charged, "CAD", 0)}</Text>
+          </View>
+          <View>
+            {lines.map((l) => (
+              <View key={l.id} style={[styles.line, { borderColor: paper.line }]}>
+                <Text style={[type.body, { color: paper.text, flex: 1 }]} numberOfLines={1}>
+                  {shareLabel(l)}
+                </Text>
+                <Text style={[type.body, { color: l.fixed ? paper.saved : paper.text, fontVariant: ["tabular-nums"] }]}>
+                  {l.fixed ? "Fixed · " : ""}
+                  {money(l.amount, "CAD", 0)}
+                </Text>
+              </View>
+            ))}
+            {lines.length === 0 && <Text style={[type.body, { color: paper.textSecondary }]}>Nothing yet this year.</Text>}
+          </View>
           {receipt.fixedCount > 0 && (
-            <Text style={{ color: "#12805A", fontFamily: font.heavy }}>
-              ✓ Looni fixed {allFixed ? "all " : ""}
-              {receipt.fixedCount} · {money(receipt.fixedAmount, "CAD", 0)} back
-            </Text>
+            <Text style={[type.bodyStrong, { color: paper.saved }]}>{`Looni fixed ${receipt.fixedCount} · ${money(receipt.fixedAmount, "CAD", 0)} back`}</Text>
           )}
-          <Text style={{ color: "#6C6A76", fontSize: 12 }}>loonifinancial.com · details masked</Text>
+          <Text style={[type.caption, { color: paper.textTertiary }]}>loonifinancial.com</Text>
         </View>
-        <Button mode="contained" icon="share-variant" onPress={share} buttonColor="#FFC82E" textColor="#14141A" contentStyle={{ paddingVertical: 8 }}>
-          Share my receipt
-        </Button>
-        <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant, textAlign: "center" }}>
-          The image shows kinds of charges and totals only. No bank, account or merchant names.
-        </Text>
-      </ScrollView>
+        <Note>The image shows kinds of charges and totals only. No bank, account or merchant names.</Note>
+      </Screen>
       <Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3500}>
         {toast}
       </Snackbar>
@@ -99,12 +91,6 @@ export default function YearReceiptScreen() {
 }
 
 const styles = StyleSheet.create({
-  center: { flex: 1, alignItems: "center", justifyContent: "center" },
-  container: { padding: 20, gap: 16, paddingBottom: 40 },
-  receipt: { backgroundColor: "#FFFFFF", borderRadius: 22, padding: 22, gap: 10, alignItems: "center" },
-  total: { fontSize: 52, fontFamily: font.display, color: "#C2410C", letterSpacing: -1, fontVariant: ["tabular-nums"] },
-  rule: { alignSelf: "stretch", borderTopWidth: 2, borderStyle: "dashed", borderColor: "#ECEAF2" },
-  line: { alignSelf: "stretch", flexDirection: "row", justifyContent: "space-between", gap: 12 },
-  lineTitle: { flex: 1, color: "#14141A", fontFamily: font.semibold },
-  lineAmount: { color: "#14141A", fontFamily: font.heavy, fontVariant: ["tabular-nums"] },
+  card: { backgroundColor: "#FFFFFF", borderRadius: radius.l, borderWidth: StyleSheet.hairlineWidth, borderColor: brand.line, padding: layout.margin, gap: space.xl },
+  line: { flexDirection: "row", gap: space.m, paddingVertical: space.m, borderTopWidth: StyleSheet.hairlineWidth },
 });

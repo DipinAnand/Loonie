@@ -1,5 +1,6 @@
 import type { Confidence, LeakKind } from "./types.js";
 import { round2 } from "./util.js";
+import { day, money } from "./text.js";
 
 /** Bump when a rule changes what it finds; shown on every finding ("Rule v1.3"). */
 export const ENGINE_VERSION = "1.3";
@@ -12,7 +13,6 @@ export const LOW_COST_ACCOUNT_CAP = 4;
 /** Typical Canadian card markup on purchases in another currency. */
 export const FX_SPREAD = 0.025;
 
-const money = (n: number) => `$${n.toFixed(2)}`;
 
 export interface Advice {
   confidence: Confidence;
@@ -57,7 +57,7 @@ export function adviceFor(i: AdviceInput): Advice {
     return {
       confidence: "medium",
       fix: "Check your receipt. If you paid once, ask the merchant for a refund, or dispute it with your card issuer.",
-      script: `I was charged ${money(i.amount)} twice${i.lastDate ? ` on ${i.lastDate}` : ""} for one purchase. Please refund the duplicate charge.`,
+      script: `I was charged ${money(i.amount)} twice${i.lastDate ? ` on ${day(i.lastDate)}` : ""} for one purchase. Please refund the duplicate charge.`,
     };
   }
   return { confidence: "medium", fix: "Check this charge. If it wasn't you, call the number on the back of your card." };
@@ -76,7 +76,7 @@ function feeAdvice(i: AdviceInput): Advice {
       return {
         confidence: "high",
         fix: `NSF fees on personal accounts at federally regulated banks are capped at ${money(NSF_CAP)} since March 12, 2026. Ask for the difference back in writing.`,
-        script: `I was charged ${money(i.amount)} for an NSF${i.lastDate ? ` on ${i.lastDate}` : ""}. The cap is ${money(NSF_CAP)} since March 12, 2026. Please refund the ${money(i.excess ?? 0)} above the cap and confirm in writing.`,
+        script: `I was charged ${money(i.amount)} for an NSF${i.lastDate ? ` on ${day(i.lastDate)}` : ""}. The cap is ${money(NSF_CAP)} since March 12, 2026. Please refund the ${money(i.excess ?? 0)} above the cap and confirm in writing.`,
       };
     case "nsf":
       return {

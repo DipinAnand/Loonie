@@ -1,15 +1,15 @@
 import { router, useLocalSearchParams, useNavigation } from "expo-router";
 import { useEffect, useLayoutEffect, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
-import { Checkbox, Snackbar, Text, useTheme } from "react-native-paper";
-import { Bar, Overline, Panel, Pill } from "../../components/ui";
+import { Pressable, StyleSheet, View } from "react-native";
+import { Snackbar, Text } from "react-native-paper";
+import { Centered, Hero, Progress, Row, Screen, Section, useCalm } from "../../components/calm";
 import { api } from "../../lib/api";
-import type { Track } from "../../lib/types";
-import { font } from "../../theme";
+import type { Track, TrackTask } from "../../lib/types";
+import { radius, space } from "../../theme";
 
 /** Newcomer or student track: twelve tasks, one a week, in the order that works. */
 export default function TrackScreen() {
-  const theme = useTheme();
+  const c = useCalm();
   const navigation = useNavigation();
   const { id } = useLocalSearchParams<{ id: Track["id"] }>();
   const [track, setTrack] = useState<Track | null>(null);
@@ -23,12 +23,16 @@ export default function TrackScreen() {
   }, [id]);
 
   useLayoutEffect(() => {
-    navigation.setOptions({ title: id === "students" ? "Student track" : "Newcomer track" });
+    navigation.setOptions({ title: id === "students" ? "Student track" : "New to Canada" });
   }, [navigation, id]);
 
-  async function toggle(taskId: string, done: boolean) {
+  async function toggle(task: TrackTask) {
+    if (task.auto) {
+      router.push(task.id === "first_scan" ? "/import" : "/receipt");
+      return;
+    }
     try {
-      const next = await api.setTrackTask(id, taskId, done);
+      const next = await api.setTrackTask(id, task.id, !task.done);
       if (track && next.index > track.index) setToast(`Level up: ${next.level}`);
       setTrack(next);
     } catch (e) {
@@ -36,46 +40,45 @@ export default function TrackScreen() {
     }
   }
 
-  if (!track) return <View style={{ flex: 1, backgroundColor: theme.colors.background }} />;
+  if (!track) return <Centered />;
+
+  const todo = track.tasks.filter((t) => !t.done);
+  const done = track.tasks.filter((t) => t.done);
+  const check = (t: TrackTask) => (
+    <Pressable
+      onPress={() => toggle(t)}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked: t.done, disabled: t.auto }}
+      accessibilityLabel={t.title}
+      hitSlop={10}
+      style={[styles.check, t.done ? { backgroundColor: c.saved, borderColor: c.saved } : { borderColor: c.textTertiary }]}
+    >
+      {t.done && <Text style={{ color: "#FFFFFF", fontSize: 14, lineHeight: 16 }}>✓</Text>}
+    </Pressable>
+  );
 
   return (
     <>
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text variant="headlineSmall" style={{ fontFamily: font.display }}>
-          {track.title}
-        </Text>
-        <Text style={{ color: theme.colors.onSurfaceVariant }}>{track.subtitle}</Text>
-        <Panel tone="lavender">
-          <View style={styles.row}>
-            <Overline>
-              WEEK {Math.min(track.done + 1, track.total)} OF {track.total}
-            </Overline>
-            <Pill label={track.level} />
-          </View>
-          <Bar value={track.done / track.total} />
-          <Text style={{ fontSize: 12, color: theme.colors.onSurfaceVariant }}>{track.levels.join(" → ")}</Text>
-        </Panel>
-        {track.tasks.map((task) => (
-          <Panel key={task.id} tone={task.done ? "green" : task.id === track.next ? "yellow" : "plain"} onPress={task.auto ? undefined : () => toggle(task.id, !task.done)}>
-            <View style={styles.task}>
-              <Checkbox.Android status={task.done ? "checked" : "unchecked"} disabled={task.auto} onPress={() => toggle(task.id, !task.done)} />
-              <View style={{ flex: 1, gap: 2 }}>
-                <Text style={{ fontFamily: font.heavy }}>
-                  Week {task.week}. {task.title}
-                </Text>
-                <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-                  {task.why}
-                </Text>
-                {task.auto && !task.done && (
-                  <Text variant="bodySmall" style={{ color: theme.colors.primary, fontFamily: font.bold }} onPress={() => router.push(task.id === "first_scan" ? "/import" : "/receipt")}>
-                    Looni ticks this when you do it →
-                  </Text>
-                )}
-              </View>
-            </View>
-          </Panel>
-        ))}
-      </ScrollView>
+      <Screen>
+        <View style={{ gap: space.m }}>
+          <Hero label={track.title} value={`${track.done} of ${track.total}`} caption={`You're a ${track.level}. ${track.subtitle}`} />
+          <Progress value={track.done / track.total} tone="saved" />
+        </View>
+        {todo.length > 0 && (
+          <Section title="Next up">
+            {todo.map((t) => (
+              <Row key={t.id} title={`Week ${t.week}. ${t.title}`} subtitle={t.auto ? `${t.why} Looni ticks this when you do it.` : t.why} right={check(t)} />
+            ))}
+          </Section>
+        )}
+        {done.length > 0 && (
+          <Section title="Done">
+            {done.map((t) => (
+              <Row key={t.id} title={`Week ${t.week}. ${t.title}`} subtitleTone="saved" subtitle="Done" right={check(t)} />
+            ))}
+          </Section>
+        )}
+      </Screen>
       <Snackbar visible={!!toast} onDismiss={() => setToast(null)} duration={3000}>
         {toast}
       </Snackbar>
@@ -84,7 +87,5 @@ export default function TrackScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, gap: 12, paddingBottom: 40 },
-  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  task: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
+  check: { width: 26, height: 26, borderRadius: radius.s - 1, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
 });

@@ -14,6 +14,7 @@ import { dueMilestone } from "../engine/renewal.js";
 import { toDay } from "../engine/util.js";
 import { log } from "../log.js";
 import { daysBetween, isoWeek, localNow } from "./time.js";
+import { day, money } from "../engine/text.js";
 
 export type AlertKind =
   | "suspicious"
@@ -83,7 +84,6 @@ export interface AlertCandidate {
   privateBody: string;
 }
 
-const money = (n: number) => `$${n.toFixed(2)}`;
 const displayName = (l: LedgerLeak) => l.title.replace(/\s\((weekly|biweekly|monthly|quarterly|annual)\)$/, "");
 const when = (days: number) => (days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`);
 
@@ -141,7 +141,7 @@ export function buildCandidates(r: LedgerReceipt, ctx: CandidateContext): AlertC
         priority: 70,
         leakId: l.id,
         title: "New bank fee",
-        body: `${l.title}: ${money(lastCharge.amount)} on ${lastCharge.date}. Banks often refund fees if you ask. Get the script.`,
+        body: `${l.title}: ${money(lastCharge.amount)} on ${day(lastCharge.date)}. Banks often refund fees if you ask. Get the script.`,
         privateBody: `${l.title}. Banks often refund fees if you ask.`,
       });
     }

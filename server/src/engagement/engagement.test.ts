@@ -23,6 +23,7 @@ const { applyScan, ensureUser, labelLeak, readReceipt } = await import("../ledge
 const { buildLeakReceipt } = await import("../engine/receipt.js");
 const { leakyScenario } = await import("../engine/scenario.js");
 import type { LedgerLeak } from "../ledger.js";
+import { money } from "../engine/text.js";
 
 const leak = (over: Partial<LedgerLeak>): LedgerLeak => ({
   id: randomUUID(),
@@ -160,7 +161,7 @@ describe("bill alerts", () => {
     assert.equal(view.coverage.status, "short");
     const c = buildCandidates(base, { today, weekday: 3, huntRemaining: 0, bills: view });
     assert.deepEqual(c.map((x) => x.kind), ["low_balance", "bill_late", "bill_due"]);
-    assert.ok(c[0].body.includes(`$${view.coverage.due.toFixed(2)}`));
+    assert.ok(c[0].body.includes(money(view.coverage.due)));
     assert.match(c[1].title, /daycare/i);
     assert.match(c[2].title, /rent/i);
     assert.ok(c.every((x) => !x.privateBody.includes("$")), "lock screen never shows amounts");

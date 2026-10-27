@@ -1,17 +1,17 @@
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
-import { Chip, HelperText, SegmentedButtons, Text, TextInput, useTheme } from "react-native-paper";
-import { Figure, Overline, Panel, tones } from "../components/ui";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Text } from "react-native-paper";
+import { Field, Hero, Note, Row, Screen, Section, useCalm } from "../components/calm";
 import { api } from "../lib/api";
 import { money } from "../lib/format";
-import { font } from "../theme";
+import { space, type } from "../theme";
 
 /** Inputs and outputs for each calculator in /tools. The math runs on the server (server/src/tools/calc.ts). */
-type Field = { key: string; label: string; value: number; suffix?: "$" | "%" | "mo" | "yr" };
+type FieldDef = { key: string; label: string; value: number; suffix?: "$" | "%" | "mo" | "yr" };
 type Choice = { key: string; options: { value: string; label: string }[]; value: string };
 type Out = { key: string; label: string; format: "money" | "years" | "months" | "text" | "pct"; big?: boolean };
 
-const CALCS: { id: string; label: string; blurb: string; fields: Field[]; choice?: Choice; out: Out[] }[] = [
+const CALCS: { id: string; label: string; blurb: string; fields: FieldDef[]; choice?: Choice; out: Out[] }[] = [
   {
     id: "renewal",
     label: "Renewal letter",
@@ -156,11 +156,38 @@ function show(v: unknown, format: Out["format"]): string {
   return String(v);
 }
 
+/** Underlined text tabs: the calm stand-in for chips and segmented buttons. */
+function Tabs<T extends string>({ options, value, onChange, scroll }: { options: { value: T; label: string }[]; value: T; onChange: (v: T) => void; scroll?: boolean }) {
+  const c = useCalm();
+  const tabs = options.map((o) => {
+    const on = o.value === value;
+    return (
+      <Pressable
+        key={o.value}
+        onPress={() => onChange(o.value)}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: on }}
+        style={[styles.tab, { borderColor: on ? c.text : "transparent" }]}
+      >
+        <Text style={[on ? type.bodyStrong : type.body, { color: on ? c.text : c.textSecondary }]}>{o.label}</Text>
+      </Pressable>
+    );
+  });
+  return scroll ? (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabs} accessibilityRole="tablist">
+      {tabs}
+    </ScrollView>
+  ) : (
+    <View style={styles.tabs} accessibilityRole="tablist">
+      {tabs}
+    </View>
+  );
+}
+
 export default function Tools() {
-  const theme = useTheme();
-  const t = tones(theme.dark);
+  const c = useCalm();
   const [active, setActive] = useState(CALCS[0].id);
-  const calc = CALCS.find((c) => c.id === active)!;
+  const calc = CALCS.find((x) => x.id === active)!;
   const [inputs, setInputs] = useState<Record<string, Record<string, string>>>({});
   const [choices, setChoices] = useState<Record<string, string>>({});
   const [result, setResult] = useState<Record<string, unknown> | null>(null);
@@ -192,88 +219,76 @@ export default function Tools() {
   }, [calc, JSON.stringify(values), choice]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const big = calc.out.find((o) => o.big)!;
+  const fields = calc.fields;
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
-        {CALCS.map((c) => (
-          <Chip
-            key={c.id}
-            selected={c.id === active}
-            onPress={() => {
-              setActive(c.id);
-              setResult(null);
-            }}
-          >
-            {c.label}
-          </Chip>
+    <Screen>
+      <View style={{ gap: space.m }}>
+        <Tabs
+          scroll
+          options={CALCS.map((x) => ({ value: x.id, label: x.label }))}
+          value={active}
+          onChange={(v) => {
+            setActive(v);
+            setResult(null);
+          }}
+        />
+        <Text style={[type.secondary, { color: c.textSecondary }]}>{calc.blurb}</Text>
+      </View>
+
+      {result && <Hero label={big.label} value={show(result[big.key], big.format)} />}
+
+      <View style={{ gap: space.l }}>
+        {calc.choice && <Tabs options={calc.choice.options} value={choice!} onChange={(v) => setChoices((s) => ({ ...s, [calc.id]: v }))} />}
+        {Array.from({ length: Math.ceil(fields.length / 2) }, (_, i) => fields.slice(i * 2, i * 2 + 2)).map((pair) => (
+          <View key={pair[0].key} style={{ flexDirection: "row", gap: space.m }}>
+            {pair.map((f) => (
+              <Field
+                key={f.key}
+                label={f.label}
+                value={values[f.key]}
+                keyboardType="decimal-pad"
+                prefix={f.suffix === "$" ? "$" : undefined}
+                suffix={f.suffix && f.suffix !== "$" ? f.suffix : undefined}
+                onChangeText={(v) => setInputs((s) => ({ ...s, [calc.id]: { ...values, [f.key]: v } }))}
+              />
+            ))}
+            {pair.length === 1 && <View style={{ flex: 1 }} />}
+          </View>
         ))}
-      </ScrollView>
-      <Text style={{ color: theme.colors.onSurfaceVariant }}>{calc.blurb}</Text>
+        {error && <Text style={[type.secondary, { color: c.leak }]}>{error}</Text>}
+      </View>
 
-      <Panel>
-        {calc.choice && (
-          <SegmentedButtons value={choice!} onValueChange={(v) => setChoices((s) => ({ ...s, [calc.id]: v }))} buttons={calc.choice.options} />
-        )}
-        <View style={styles.fields}>
-          {calc.fields.map((f) => (
-            <TextInput
-              key={f.key}
-              style={styles.field}
-              mode="outlined"
-              label={f.label}
-              value={values[f.key]}
-              keyboardType="decimal-pad"
-              onChangeText={(v) => setInputs((s) => ({ ...s, [calc.id]: { ...values, [f.key]: v } }))}
-              left={f.suffix === "$" ? <TextInput.Affix text="$" /> : undefined}
-              right={f.suffix && f.suffix !== "$" ? <TextInput.Affix text={f.suffix} /> : undefined}
-            />
-          ))}
-        </View>
-        {error && <HelperText type="error">{error}</HelperText>}
-      </Panel>
-
-      {result && (
-        <Panel tone="ink">
-          <Overline color="#D8D0FA">{big.label.toUpperCase()}</Overline>
-          <Figure size={40} color="#FFFFFF">
-            {show(result[big.key], big.format)}
-          </Figure>
+      {result && calc.out.some((o) => !o.big) && (
+        <Section title="Breakdown">
           {calc.out
             .filter((o) => !o.big)
             .map((o) => (
-              <View key={o.key} style={styles.row}>
-                <Text style={{ color: "#D8D0FA" }}>{o.label}</Text>
-                <Text style={{ color: "#FFFFFF", fontFamily: font.heavy, fontVariant: ["tabular-nums"] }}>{show(result[o.key], o.format)}</Text>
-              </View>
+              <Row key={o.key} title={o.label} value={show(result[o.key], o.format)} />
             ))}
-        </Panel>
+        </Section>
       )}
 
       {calc.id === "credit" && result && Array.isArray(result.options) && (
-        <Panel tone="green">
-          <Overline color={t.green.fg}>CHEAPER WAYS TO PAY IT OFF (SAME PAYMENT)</Overline>
+        <Section title="Cheaper ways to pay it off, same payment">
           {(result.options as { id: string; label: string; apr: number; saves: number | null }[]).map((o) => (
-            <View key={o.id} style={styles.row}>
-              <Text style={{ color: t.green.fg, flex: 1 }}>
-                {o.label} · {o.apr.toFixed(2)}%
-              </Text>
-              <Text style={{ color: t.green.fg, fontFamily: font.heavy }}>{o.saves && o.saves > 0 ? `−${money(o.saves, "CAD", 0)}` : "same"}</Text>
-            </View>
+            <Row
+              key={o.id}
+              title={o.label}
+              subtitle={`${o.apr.toFixed(2)}%`}
+              value={o.saves && o.saves > 0 ? `−${money(o.saves, "CAD", 0)}` : "Same"}
+              valueTone={o.saves && o.saves > 0 ? "saved" : "secondary"}
+            />
           ))}
-        </Panel>
+        </Section>
       )}
-      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>
-        Estimates from fixed rules, not financial advice.
-      </Text>
-    </ScrollView>
+
+      <Note>Estimates from fixed rules, not financial advice.</Note>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20, gap: 14, paddingBottom: 40 },
-  chips: { gap: 8 },
-  fields: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  field: { flexGrow: 1, flexBasis: "45%" },
-  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 },
+  tabs: { flexDirection: "row", gap: space.xl },
+  tab: { minHeight: 44, justifyContent: "center", borderBottomWidth: 2 },
 });

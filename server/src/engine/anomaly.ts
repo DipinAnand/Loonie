@@ -1,5 +1,6 @@
 import type { Leak, Txn } from "./types.js";
 import { merchantKey, round2, stableId, toDay } from "./util.js";
+import { money } from "./text.js";
 
 /**
  * Suspicious-charge rules. Plaid data arrives about daily, so this is a
@@ -32,7 +33,6 @@ const LABEL: Record<SuspiciousRule, string> = {
   zombie_subscription: "Still charging after you told Looni you don't need it. Make sure it's really cancelled.",
 };
 
-const money = (n: number) => `$${n.toFixed(2)}`;
 
 function percentile(values: number[], p: number): number {
   if (values.length === 0) return 0;

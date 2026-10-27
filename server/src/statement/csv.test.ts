@@ -107,7 +107,7 @@ describe("statement → Leak Receipt (the site's sample year)", () => {
     assert.equal(find((l) => l.features.feeType === "nsf")?.txnIds.length, 2);
     const hike = find((l) => l.kind === "price_hike")!;
     assert.equal(hike.features.delta, 3);
-    assert.match(hike.detail, /since 2026-03-05\. 7 charges at the new price: \$21\.00 extra so far/);
+    assert.match(hike.detail, /since Mar 5(, 2026)?\. 7 charges at the new price: \$21\.00 extra so far/);
     assert.ok(!find((l) => l.merchantKey.includes("loblaws")));
     assert.equal(find((l) => l.kind === "duplicate")?.annualImpact, 64.2);
   });

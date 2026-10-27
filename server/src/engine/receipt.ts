@@ -3,6 +3,7 @@ import { classifyFee, FEE_RULES } from "./fees.js";
 import { detectRecurring, perYear } from "./recurring.js";
 import type { Leak, LeakMeta, LeakReceipt, RecurringSeries, Txn, Verdict } from "./types.js";
 import { isForeignPurchase, merchantKey, round2, stableId, toDay } from "./util.js";
+import { day, money } from "./text.js";
 
 /** Recurring, but essential: never flagged as a subscription leak. */
 const ESSENTIAL_PRIMARY = new Set(["RENT_AND_UTILITIES", "GOVERNMENT_AND_NON_PROFIT", "MEDICAL", "LOAN_PAYMENTS"]);
@@ -24,7 +25,6 @@ const REFUND_AFTER_DAYS = 120;
 const REFUND_EXEMPT_PRIMARY = new Set(["INCOME", "TRANSFER_IN", "TRANSFER_OUT", "LOAN_PAYMENTS"]);
 const REFUND_WORDS = /\b(refund|reversal|revers\w*|rebate|credit|adjustment|waiv\w*|rembours\w*|annul\w*|renvers\w*|remise|return(ed)?)\b/gi;
 
-const money = (n: number) => `$${n.toFixed(2)}`;
 
 export function buildLeakReceipt(
   txns: Txn[],
@@ -200,7 +200,7 @@ function subscriptionLeaks(recurring: RecurringSeries[]): Leak[] {
       id: stableId("subscription", s.merchantKey),
       kind: "subscription" as const,
       title: `${s.displayName} (${s.cadence})`,
-      detail: `${money(s.lastAmount)} ${s.cadence}, ${s.count} charges since ${s.firstDate}. Next around ${s.nextExpectedDate}. Still using it?`,
+      detail: `${money(s.lastAmount)} ${s.cadence}, ${s.count} charges since ${day(s.firstDate)}. Next around ${day(s.nextExpectedDate)}. Still using it?`,
       merchantKey: s.merchantKey,
       annualImpact: s.annualCost,
       txnIds: s.txnIds,
@@ -232,7 +232,7 @@ function priceHikeLeaks(recurring: RecurringSeries[]): Leak[] {
       id: stableId("price_hike", s.merchantKey, String(s.previousAmount), String(s.lastAmount)),
       kind: "price_hike",
       title: `${s.displayName} raised its price`,
-      detail: `${money(s.previousAmount)} → ${money(s.lastAmount)} (+${((delta / s.previousAmount) * 100).toFixed(0)}%) since ${s.stepDate}. ${s.chargesSinceStep} charge${s.chargesSinceStep === 1 ? "" : "s"} at the new price: ${money(delta * (s.chargesSinceStep ?? 1))} extra so far`,
+      detail: `${money(s.previousAmount)} → ${money(s.lastAmount)} (+${((delta / s.previousAmount) * 100).toFixed(0)}%) since ${s.stepDate ? day(s.stepDate) : "recently"}. ${s.chargesSinceStep} charge${s.chargesSinceStep === 1 ? "" : "s"} at the new price: ${money(delta * (s.chargesSinceStep ?? 1))} extra so far`,
       merchantKey: s.merchantKey,
       annualImpact: round2(delta * perYear(s.cadence)),
       txnIds: s.txnIds.slice(-2),
@@ -268,7 +268,7 @@ function duplicateLeaks(txns: Txn[]): Leak[] {
         id: stableId("duplicate", a.id, b.id),
         kind: "duplicate",
         title: `Possible double charge: ${b.merchantName?.trim() || a.name}`,
-        detail: `${money(a.amount)} on ${a.date} and again on ${b.date}. Worth asking for a refund.`,
+        detail: `${money(a.amount)} on ${day(a.date)} and again on ${day(b.date)}. Worth asking for a refund.`,
         merchantKey: keyA,
         annualImpact: round2(b.amount),
         txnIds: [a.id, b.id],

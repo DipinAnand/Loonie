@@ -37,7 +37,8 @@ export default function TabsLayout() {
           options={{
             title: t.title,
             headerTitle: t.header ?? "Looni",
-            headerShown: t.name !== "home",
+            // Each tab draws its own calm title (components/calm.tsx Screen).
+            headerShown: false,
             tabBarIcon: ({ color, size }) => <MaterialCommunityIcons name={t.icon} color={color} size={size} />,
           }}
         />
