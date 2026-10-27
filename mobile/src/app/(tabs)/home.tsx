@@ -87,7 +87,7 @@ export default function HomeScreen() {
                 {money(overview.netWorth.net, "CAD", 0)}
               </Figure>
               <Text style={{ color: "#D8D0FA", fontFamily: font.medium }}>
-                {overview.accounts.length} accounts · banks, cards, investments, mortgage · live
+                {overview.accounts.length} {overview.accounts.length === 1 ? "account" : "accounts"} · live from your banks
               </Text>
             </View>
             <Panel style={{ paddingVertical: 8, gap: 0 }}>

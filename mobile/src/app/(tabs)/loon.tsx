@@ -71,7 +71,7 @@ export default function Loon() {
               {home.hunt.remaining ? `${home.hunt.remaining} of ${home.hunt.total} leaks to sort` : "Done for the week"}
             </Text>
             <Text style={{ color: home.hunt.remaining ? t.yellow.fg : t.green.fg }}>
-              {home.streaks.huntWeeks}-week streak{home.streaks.feeFreeDays !== null ? ` · ${home.streaks.feeFreeDays} days fee-free` : ""}
+              {home.streaks.huntWeeks}-week streak{home.streaks.feeFreeDays !== null ? ` · ${home.streaks.feeFreeDays} day${home.streaks.feeFreeDays === 1 ? "" : "s"} fee-free` : ""}
             </Text>
             {home.hunt.remaining > 0 && (
               <Button mode="contained" onPress={() => router.push("/receipt")} buttonColor={t.ink.bg} textColor={t.ink.fg}>

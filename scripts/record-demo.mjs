@@ -1,14 +1,15 @@
 /**
  * Records the Looni demo video from the web build, with captions.
  *
- *   1. Server: cd server && npm run dev        (any Plaid keys; the demo doesn't call Plaid)
+ *   1. Server: cd server && npm run dev        (Plaid Sandbox keys in server/.env or the environment)
  *   2. Web app: cd mobile && EXPO_PUBLIC_API_URL=http://localhost:4000 npx expo export -p web --output-dir dist
  *      then serve mobile/dist on port 8090 with a single-page fallback (any static server works)
  *   3. node scripts/record-demo.mjs [out-dir]    → out-dir/looni-demo.mp4 (needs ffmpeg)
  *
- * No bank connection needed: the demo scans a year of statement data (written fresh, dated up to today)
- * through the real file picker. Net worth and the 30-day forecast need live balances, so the demo
- * shows a sample household there and says so on screen; set SAMPLE_BALANCES=0 to skip that.
+ * The demo connects a Plaid Sandbox test bank (the app's "Leaky test account" shortcut, since Plaid
+ * Link's own screens need a native build), so every number comes from Plaid, live balances included.
+ * DEMO_SOURCE=statement records the no-login path instead: a year of statement data scanned through
+ * the file picker, with a sample household (labelled on screen) for the screens that need balances.
  *
  * Playwright must be installed (npm i -g playwright, or set PLAYWRIGHT_MODULE to its path;
  * set CHROMIUM_PATH to use a specific Chromium build).
@@ -23,7 +24,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "playwright");
 
 const APP = process.env.APP_URL || "http://localhost:8090";
 const OUT = resolve(process.argv[2] || "demo-out");
-const SAMPLE_BALANCES = process.env.SAMPLE_BALANCES !== "0";
+const FROM_STATEMENT = process.env.DEMO_SOURCE === "statement";
+// Balances only exist with a bank connected; the statement demo shows a labelled sample instead.
+const SAMPLE_BALANCES = FROM_STATEMENT;
 // A 390×844 phone, rendered at 2× by zooming the page (Chrome's screencast only sends CSS-pixel frames).
 const W = 390;
 const H = 844;
@@ -252,29 +255,45 @@ const byText = (t) => page.getByText(t, { exact: true }).first();
 const tab = (name) => page.getByRole("tab", { name: new RegExp(`${name}$`) });
 
 await page.goto(APP);
-await page.getByText("Drop a statement instead").waitFor();
+await page.getByText("Scan my accounts").waitFor();
 await card(`${LOGO}<div class="big">Find the fees you <em>never noticed.</em></div><div class="sub">Not another budget app. It finds you money, every month.</div>`, 3400);
 
-await caption("Every fee, price rise and double charge, with the receipts");
-await wait(2600);
-await caption("No bank login needed to try it", "Drop a statement export. The file is never stored.");
-await wait(1600);
-await tap(page.getByText("Drop a statement instead"), 900);
-await wait(1200);
-const chooser = page.waitForEvent("filechooser");
-await tap(page.getByText("Choose statement files"), 200);
-await (await chooser).setFiles(statementPath);
-await caption("Reading 12 months of transactions…");
-await page.getByText("LEAKING IN THIS FILE, PER YEAR").waitFor({ timeout: 60_000 });
-await wait(500);
-await caption("Found in seconds. Nothing stored yet.", "Your bank's quiet score, and the one move that saves the most.");
-await wait(3600);
-await scroll(520, 2200);
-await caption("Each leak with a confidence level: HIGH, or CHECK");
-await wait(2200);
-await tap(page.getByText("Keep these findings on my receipt"), 300);
-await page.getByText("Leak Receipt", { exact: true }).waitFor({ timeout: 30_000 });
+if (FROM_STATEMENT) {
+  await caption("No bank login? Drop a statement export", "The file is never stored.");
+  await wait(1600);
+  await tap(page.getByText("Drop a statement instead"), 900);
+  await wait(1200);
+  const chooser = page.waitForEvent("filechooser");
+  await tap(page.getByText("Choose statement files"), 200);
+  await (await chooser).setFiles(statementPath);
+  await caption("Reading 12 months of transactions…");
+  await page.getByText("LEAKING IN THIS FILE, PER YEAR").waitFor({ timeout: 60_000 });
+  await wait(500);
+  await caption("Found in seconds. Nothing stored yet.", "Your bank's quiet score, and the one move that saves the most.");
+  await wait(3600);
+  await scroll(520, 2200);
+  await caption("Each leak with a confidence level: HIGH, or CHECK");
+  await wait(2200);
+  await tap(page.getByText("Keep these findings on my receipt"), 300);
+} else {
+  await caption("Every fee, price rise and double charge, with the receipts");
+  await wait(2600);
+  await tap(page.getByText("Scan my accounts"), 900);
+  await caption("Your data, your call", "Read-only. Raw transactions are never stored.", { top: true });
+  await wait(2600);
+  await tap(page.getByText("Continue", { exact: true }), 900);
+  await caption("Connect your bank through Plaid", "Demo: a Plaid Sandbox test bank. Looni never sees your password.");
+  await wait(2600);
+  await tap(page.getByText("Leaky test account"), 300);
+  await caption("Reading your transactions from Plaid…");
+}
+await page.getByText("Leak Receipt", { exact: true }).waitFor({ timeout: 90_000 });
 await wait(600);
+if (!FROM_STATEMENT) {
+  await caption("A $1 charge from a merchant you've never used", "Fraudsters test stolen cards this way. One tap to act on it.", { top: true });
+  await wait(3400);
+  await scroll(240, 1200);
+}
 
 await caption("The Leak Receipt", "Every line opens to the charges behind it.", { top: true });
 await wait(2800);
@@ -283,7 +302,7 @@ await caption("NSF fees above the $10 cap: money the bank owes you back", "", { 
 await wait(3000);
 await caption("");
 await tap(byText("Monthly account fees"), 1200);
-await caption("12 charges × $16.95. The rule, the confidence, the evidence.", "", { top: true });
+await caption("Every charge behind it, with the rule and the confidence", "", { top: true });
 await wait(3400);
 await scroll(520, 1800);
 await caption("And the exact words to say", "Low-cost accounts are capped at $4 a month.", { top: true });
@@ -295,13 +314,13 @@ await page.goBack();
 await wait(800);
 
 await tap(tab("Home"), 1500);
-await caption("Banks, cards, investments, mortgage. One place.", SAMPLE_BALANCES ? "Sample balances: live once a bank is connected." : "");
+await caption("Every account, one place", SAMPLE_BALANCES ? "Sample balances: live once a bank is connected." : "Live balances from Plaid. Never stored.");
 await wait(3800);
 await scroll(560, 1800);
 await caption("Bounce risk, renewal, leaks: at a glance");
 await wait(2400);
 await tap(page.getByText("Bounce risk", { exact: false }).first(), 1500);
-await caption("Know before it bounces", "Bills land before payday. Your savings at another bank can cover it.", { top: true });
+await caption("Know before it bounces", "Rent, hydro and daycare land before payday.", { top: true });
 await wait(4200);
 await caption("");
 await page.goBack();
